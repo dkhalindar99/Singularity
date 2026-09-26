@@ -6,6 +6,8 @@
 // account is signed in anonymously, which the host can refuse — or dev tokens
 // on a developer's machine.
 
+import { uuid } from "/src/core/uuid.js";
+
 const FIREBASE_SDK = "https://www.gstatic.com/firebasejs/11.10.0";
 
 function stored(key, make) {
@@ -21,7 +23,7 @@ function stored(key, make) {
   }
 }
 
-export const deviceId = stored("spacenotes-live-device", () => `web-${crypto.randomUUID().slice(0, 8)}`);
+export const deviceId = stored("spacenotes-live-device", () => `web-${uuid().slice(0, 8).toLowerCase()}`);
 
 /** Returns `getToken(name) => Promise<string>`. */
 export async function makeAuth(config) {
@@ -38,6 +40,6 @@ export async function makeAuth(config) {
       return auth.currentUser.getIdToken();
     };
   }
-  const uid = stored("spacenotes-live-dev-uid", () => `u${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`);
+  const uid = stored("spacenotes-live-dev-uid", () => `u${uuid().replaceAll("-", "").slice(0, 12).toLowerCase()}`);
   return async (name = "") => `dev:${uid}:${name.replace(/[:\n]/g, " ").slice(0, 60)}`;
 }

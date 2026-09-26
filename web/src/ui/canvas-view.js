@@ -7,6 +7,7 @@
 // other people's), pointers, the laser and a stroke being dragged — and is
 // redrawn every frame while anything is moving.
 
+import { uuid } from "../core/uuid.js";
 import { LiveInkStreamer, round1 } from "../client/room-client.js";
 import { drawBackground, drawPoints, drawPointer, drawStroke, drawText, distanceToStroke, strokePoints, textAt } from "./page-renderer.js";
 
@@ -248,7 +249,7 @@ export class CanvasView {
       const spec = TOOLS[this.tool];
       const color = this.tool === "highlighter" ? { ...this.color, a: spec.alpha } : this.color;
       this.local = {
-        id: crypto.randomUUID().toUpperCase(),
+        id: uuid(),
         ink: spec.ink,
         color,
         width: spec.width,
@@ -364,7 +365,7 @@ export class CanvasView {
     this.streamer.end();
     this.client.addStroke(page.id, this.#finishStroke(done));
     const last = done.points[done.points.length - 1];
-    this.local = { ...done, id: crypto.randomUUID().toUpperCase(), startedAt: performance.now(), points: [{ ...last, timeOffset: 0 }] };
+    this.local = { ...done, id: uuid(), startedAt: performance.now(), points: [{ ...last, timeOffset: 0 }] };
     this.streamer.begin({ pageId: page.id, liveId: this.local.id, ink: done.ink, color: done.color, width: done.width });
     this.streamer.add(last.x, last.y, last.width);
   }

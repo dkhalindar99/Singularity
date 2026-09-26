@@ -16,6 +16,7 @@
 //   FIREBASE_WEB_API_KEY, FIREBASE_AUTH_DOMAIN   for the web app's sign-in
 
 import http from "node:http";
+import os from "node:os";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -315,7 +316,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const config = configFromEnv(process.env);
   const server = createLiveServer(config);
   const port = Number(process.env.PORT || 8080);
-  server.listen(port, () => console.log(JSON.stringify({ severity: "INFO", message: `SpaceNotes Live on :${port}`, video: Boolean(config.liveKit), devAuth: process.env.LIVE_DEV_AUTH === "1" })));
+  server.listen(port, () => {
+    console.log(JSON.stringify({ severity: "INFO", message: `SpaceNotes Live on :${port}`, voice: Boolean(config.liveKit), devAuth: process.env.LIVE_DEV_AUTH === "1" }));
+    if (process.env.LIVE_DEV_AUTH === "1") {
+      // For trying it on a real iPad or Android tablet on the same Wi-Fi.
+      const addresses = Object.values(os.networkInterfaces()).flat()
+        .filter((a) => a && a.family === "IPv4" && !a.internal).map((a) => `http://${a.address}:${port}`);
+      console.log(`\nOpen http://localhost:${port} here, or type one of these into the demo apps on your Wi-Fi:\n  ${addresses.join("\n  ") || "(no network address found)"}\n`);
+    }
+  });
   const shutdown = async () => {
     // Cloud Run sends SIGTERM before stopping an instance: save every room.
     await Promise.all([...server.registry.rooms.values()].map((room) => room.saveNow()));

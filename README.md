@@ -66,6 +66,13 @@ For voice, run a LiveKit dev server (`livekit-server --dev`) and
 start the room server with `LIVEKIT_URL=ws://127.0.0.1:7880
 LIVEKIT_API_KEY=devkey LIVEKIT_API_SECRET=secret`.
 
+## Trying it on your own devices
+
+`docs/TESTING.md` walks through it in three levels: two browser windows on
+your Mac; real iPads, Android tablets and phones on your home Wi-Fi (with the
+demo apps in `ios/Demo` and `android/live-demo`); and friends over the
+internet once the server is online. It ends with a checklist of what to try.
+
 ## Deploying
 
 `server/scripts/deploy-gcp.sh` deploys to Cloud Run in Mumbai (asia-south1)

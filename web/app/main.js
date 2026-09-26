@@ -10,6 +10,7 @@ import { LiveApi } from "/src/client/api.js";
 import { CanvasView } from "/src/ui/canvas-view.js";
 import { deviceId, makeAuth } from "/app/auth.js";
 import { VoiceIdlePolicy } from "/src/core/voice-idle.js";
+import { uuid } from "/src/core/uuid.js";
 
 const $ = (id) => document.getElementById(id);
 const serverUrl = location.origin;
@@ -123,7 +124,7 @@ $("create-form").addEventListener("submit", async (event) => {
   const paper = $("create-paper").value;
   const count = Math.max(1, Math.min(50, Number($("create-pages").value) || 1));
   const pages = Array.from({ length: count }, () => ({
-    id: crypto.randomUUID().toUpperCase(),
+    id: uuid(),
     width: 595,
     height: 842,
     background: paper === "blank" ? { kind: "blank" } : { kind: "template", template: paper },
@@ -269,7 +270,7 @@ function renderPages() {
 
 $("add-page").addEventListener("click", () => {
   const current = view.page;
-  const page = { id: crypto.randomUUID().toUpperCase(), width: current?.width ?? 595, height: current?.height ?? 842, background: current?.background?.kind === "template" ? current.background : { kind: "blank" } };
+  const page = { id: uuid(), width: current?.width ?? 595, height: current?.height ?? 842, background: current?.background?.kind === "template" ? current.background : { kind: "blank" } };
   client.addPage(page, current?.id ?? null);
   goTo(page.id);
 });
@@ -359,7 +360,7 @@ function editText(page, existing, at) {
     if (!value && existing) return client.eraseTexts(page.id, [existing.id]);
     if (!value || value === existing?.text) return;
     client.upsertText(page.id, {
-      id: existing?.id ?? crypto.randomUUID().toUpperCase(),
+      id: existing?.id ?? uuid(),
       text: value,
       frame: { x: f.x, y: f.y, width: Math.max(80, Math.round(rect.width / view.scale)) || f.width, height: Math.max(24, Math.round(rect.height / view.scale)) || f.height },
       fontSize: existing?.fontSize ?? 16,
