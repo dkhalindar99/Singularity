@@ -45,4 +45,28 @@ class InkGeometryTest {
         assertEquals(0.0, fit.offsetY, 1e-9)
         assertEquals(100.0, fit.toPageX(fit.toViewX(100.0)), 1e-9)
     }
+
+    @Test
+    fun smoothPiecesJoinUpAndKeepEachPointsWidth() {
+        val points = listOf(
+            LivePoint(0.0, 0.0, 1.0, 0.0, 1.0),
+            LivePoint(10.0, 0.0, 1.0, 0.0, 2.0),
+            LivePoint(10.0, 10.0, 1.0, 0.0, 3.0),
+            LivePoint(0.0, 10.0, 1.0, 0.0, 4.0),
+        )
+        val pieces = InkGeometry.smoothPieces(points)
+        assertEquals(4, pieces.size)
+        assertEquals(0.0, pieces.first().x0, 0.0)
+        assertEquals(10.0, pieces.last().y1, 0.0)
+        for (i in 1 until pieces.size) {
+            assertEquals(pieces[i - 1].x1, pieces[i].x0, 0.0)
+            assertEquals(pieces[i - 1].y1, pieces[i].y0, 0.0)
+        }
+        // The corner at (10, 0) is a control point, not a point on the line.
+        assertEquals(10.0, pieces[1].cx, 0.0)
+        assertEquals(0.0, pieces[1].cy, 0.0)
+        assertEquals(listOf(1.0, 2.0, 3.0, 4.0), pieces.map { it.width })
+        assertTrue(InkGeometry.smoothPieces(points.take(1)).isEmpty())
+        assertEquals(1, InkGeometry.smoothPieces(points.take(2)).size)
+    }
 }

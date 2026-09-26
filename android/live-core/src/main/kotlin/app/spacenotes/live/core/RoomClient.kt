@@ -600,7 +600,14 @@ public class RoomClient(
         // While a stroke is drawn its `ink.live` already shows where the pen
         // is, so no pointer goes out on top of it.
         strokesInProgress++
-        pointerThrottle.cancel()
+        // A hover dot left where the pen came down would sit beside the
+        // growing line, so it is taken away.
+        if (pointerThrottle.shown) {
+            pointerThrottle.forget()
+            sendPresenceLocked(Presence.PointerHide)
+        } else {
+            pointerThrottle.cancel()
+        }
         LiveInkStreamer(this, pageId, id, ink, color, width)
     }
 
@@ -721,6 +728,9 @@ public class RoomClient(
             job = null
             waiting = null
         }
+
+        /** Whether a pointer has been sent and not hidden since. */
+        val shown: Boolean get() = lastSent != null
 
         /** After `pointer.hide` the next pointer goes out whatever its distance. */
         fun forget() {

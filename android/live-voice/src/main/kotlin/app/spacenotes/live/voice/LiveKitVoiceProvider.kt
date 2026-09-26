@@ -10,6 +10,8 @@ import app.spacenotes.live.ui.LiveVoiceStatus
 import io.livekit.android.LiveKit
 import io.livekit.android.RoomOptions
 import io.livekit.android.room.Room
+import io.livekit.android.room.participant.AudioPresets
+import io.livekit.android.room.participant.AudioTrackPublishDefaults
 import io.livekit.android.room.participant.Participant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -24,7 +26,8 @@ import kotlinx.coroutines.launch
 /**
  * [LiveVoiceProvider] over LiveKit's Android SDK. Voice only: this client
  * never turns a camera on (and the server's ticket would refuse one). The
- * microphone starts on when the person allowed it.
+ * microphone starts on when the person allowed it, and is published with
+ * LiveKit's speech preset and DTX.
  */
 public class LiveKitVoiceProvider(context: Context) : LiveVoiceProvider {
     private val appContext = context.applicationContext
@@ -43,7 +46,15 @@ public class LiveKitVoiceProvider(context: Context) : LiveVoiceProvider {
     override suspend fun connect(url: String, token: String, microphone: Boolean) {
         if (room != null) return
         _status.value = LiveVoiceStatus.Connecting
-        val created = LiveKit.create(appContext, RoomOptions())
+        // Speech, not music (PROTOCOL.md, "Voice and cost"): about 24 kbps,
+        // with silence suppression, half the mobile data of the default.
+        val options = RoomOptions(
+            audioTrackPublishDefaults = AudioTrackPublishDefaults(
+                audioBitrate = AudioPresets.SPEECH.maxBitrate,
+                dtx = true,
+            ),
+        )
+        val created = LiveKit.create(appContext, options)
         room = created
         // Every room event (joins, leaves, mutes, active speakers) can change
         // what the tiles show, so each one re-reads the participants.

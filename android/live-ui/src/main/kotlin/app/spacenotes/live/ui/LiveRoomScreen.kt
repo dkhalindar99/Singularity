@@ -86,6 +86,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.spacenotes.live.core.DrawPolicy
 import app.spacenotes.live.core.LiveApi
@@ -99,6 +102,7 @@ import app.spacenotes.live.core.RemovedReason
 import app.spacenotes.live.core.RoomClient
 import app.spacenotes.live.core.RoomEvent
 import app.spacenotes.live.core.RoomStatus
+import app.spacenotes.live.core.VoiceIdlePolicy
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -157,8 +161,6 @@ public fun LiveRoomScreen(
         val canDraw by client.canDraw.collectAsStateWithLifecycle()
         val canUndo by client.canUndo.collectAsStateWithLifecycle()
         val canRedo by client.canRedo.collectAsStateWithLifecycle()
-        val liveInk by client.liveInk.collectAsStateWithLifecycle()
-        val pointers by client.pointers.collectAsStateWithLifecycle()
         val voiceParticipants by voiceProvider.participants.collectAsStateWithLifecycle()
         val micOn by voiceProvider.microphoneOn.collectAsStateWithLifecycle()
         val snackbar = remember { SnackbarHostState() }
@@ -194,7 +196,9 @@ public fun LiveRoomScreen(
 
         // Voice starts once the room has let us in (the ticket needs membership).
         var micDecision by remember { mutableStateOf<Boolean?>(null) }
-        val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { micDecision = it }
+        val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (micDecision == null) micDecision = granted else if (granted) voiceProvider.setMicrophone(true)
+        }
         val hasVoice = voiceProvider !== NoVoice
         val joined = status == RoomStatus.Connected
         LaunchedEffect(joined) {
@@ -202,12 +206,54 @@ public fun LiveRoomScreen(
             val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
             if (granted) micDecision = true else micPermission.launch(Manifest.permission.RECORD_AUDIO)
         }
-        LaunchedEffect(micDecision) {
-            val microphone = micDecision ?: return@LaunchedEffect
-            val ticket = runCatching { api.voiceToken(client.roomId) }.getOrNull() ?: return@LaunchedEffect
-            runCatching { voiceProvider.connect(ticket.url, ticket.token, microphone) }
+
+        // Voice is billed by the minute, talking or not, so it is left when
+        // unused (PROTOCOL.md, "Voice and cost"); the room itself stays.
+        val idle = remember { VoiceIdlePolicy(System::currentTimeMillis) }
+        var voicePaused by remember { mutableStateOf<VoiceIdlePolicy.Reason?>(null) }
+        var micWhenPaused by remember { mutableStateOf<Boolean?>(null) }
+        fun pauseVoice(reason: VoiceIdlePolicy.Reason) {
+            micWhenPaused = voiceProvider.microphoneOn.value
+            voiceProvider.disconnect()
+            voicePaused = reason
         }
-        DisposableEffect(voiceProvider) { onDispose { voiceProvider.disconnect() } }
+        fun resumeVoice() {
+            idle.resume()
+            voicePaused = null
+        }
+        LaunchedEffect(micDecision, voicePaused) {
+            val permitted = micDecision ?: return@LaunchedEffect
+            if (voicePaused != null) return@LaunchedEffect
+            // A fresh ticket every time: the last one may have expired while paused.
+            val ticket = runCatching { api.voiceToken(client.roomId) }.getOrNull() ?: return@LaunchedEffect
+            runCatching { voiceProvider.connect(ticket.url, ticket.token, permitted && (micWhenPaused ?: true)) }
+        }
+        LaunchedEffect(client) { client.inkActivity.collect { idle.activity() } }
+        LaunchedEffect(hasVoice, micDecision) {
+            if (!hasVoice || micDecision == null) return@LaunchedEffect
+            while (true) {
+                delay(VOICE_IDLE_CHECK_MS)
+                // Someone still talking may not produce a new event, so ask now.
+                if (voiceProvider.participants.value.values.any { it.speaking }) idle.activity()
+                idle.check()?.let(::pauseVoice)
+            }
+        }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner, voiceProvider) {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_STOP -> idle.hidden()
+                    // Back from the background: rejoin by itself, microphone as it was.
+                    Lifecycle.Event.ON_START -> if (idle.visible()) voicePaused = null
+                    else -> Unit
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+                voiceProvider.disconnect()
+            }
+        }
 
         LaunchedEffect(client) {
             client.events.collect { event ->
@@ -269,8 +315,6 @@ public fun LiveRoomScreen(
                                 page = page,
                                 settings = settings,
                                 canDraw = canDraw,
-                                liveInk = liveInk.values,
-                                pointers = pointers.values,
                                 members = members,
                                 backgroundImage = assetId?.let { images[it] },
                                 onTextTap = { textDraft = it },
@@ -285,6 +329,12 @@ public fun LiveRoomScreen(
                         }
                         if (!canDraw && page != null && status == RoomStatus.Connected) {
                             Chip("View only — the host is drawing", Modifier.align(Alignment.TopCenter).padding(8.dp))
+                        }
+                        if (voicePaused == VoiceIdlePolicy.Reason.Quiet) {
+                            Chip(
+                                "Voice paused — tap to resume",
+                                Modifier.align(Alignment.BottomCenter).padding(8.dp).clickable { resumeVoice() },
+                            )
                         }
                     }
                     InkToolbar(
@@ -318,7 +368,11 @@ public fun LiveRoomScreen(
                         micOn = micOn,
                         onMic = {
                             val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                            if (granted) voiceProvider.setMicrophone(!micOn) else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                            when {
+                                voicePaused != null -> resumeVoice()
+                                granted -> voiceProvider.setMicrophone(!micOn)
+                                else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                            }
                         },
                         handRaised = handRaised,
                         onHand = {
@@ -400,6 +454,9 @@ public fun LiveRoomScreen(
         }
     }
 }
+
+/** How often the screen asks [VoiceIdlePolicy] whether to leave voice. */
+private const val VOICE_IDLE_CHECK_MS = 5_000L
 
 /** Grows a text frame to hold its text, roughly: the page redraws it exactly. */
 private fun LiveRect.fitting(text: String, fontSize: Double): LiveRect {

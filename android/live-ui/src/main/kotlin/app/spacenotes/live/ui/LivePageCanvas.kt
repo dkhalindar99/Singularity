@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -50,8 +52,6 @@ import app.spacenotes.live.core.LivePoint
 import app.spacenotes.live.core.LiveText
 import app.spacenotes.live.core.Member
 import app.spacenotes.live.core.PageBackground
-import app.spacenotes.live.core.RemoteInk
-import app.spacenotes.live.core.RemotePointer
 import app.spacenotes.live.core.RoomClient
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -105,8 +105,6 @@ public fun LivePageCanvas(
     page: LivePage,
     settings: InkSettings,
     canDraw: Boolean,
-    liveInk: Collection<RemoteInk>,
-    pointers: Collection<RemotePointer>,
     members: List<Member>,
     backgroundImage: ImageBitmap?,
     onTextTap: (TextDraft) -> Unit,
@@ -123,7 +121,14 @@ public fun LivePageCanvas(
 
     // Lasers fade out; tick while any is on screen.
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    val hasLaser = pointers.any { it.laser && it.pageId == page.id }
+    // Other people's ink and pointers are read inside the draw block below, so
+    // each `ink.live` only redraws the canvas (in the next frame) rather than
+    // recomposing the screen.
+    val liveInkState = client.liveInk.collectAsState()
+    val pointersState = client.pointers.collectAsState()
+    val hasLaser by remember(page.id) {
+        derivedStateOf { pointersState.value.values.any { it.laser && it.pageId == page.id } }
+    }
     LaunchedEffect(hasLaser) {
         while (hasLaser) {
             now = System.currentTimeMillis()
@@ -223,7 +228,7 @@ public fun LivePageCanvas(
                 for (item in page.texts) {
                     if (!item.erased) drawTextBox(item.text, origin, scale, textMeasurer)
                 }
-                for (ink in liveInk) {
+                for (ink in liveInkState.value.values) {
                     if (ink.pageId != page.id) continue
                     val color = ink.color.toColor()
                     drawInk(ink.points, color, ink.inkKind, ink.inkKind == LiveInk.Marker && ink.color.a < 1.0, origin, scale)
@@ -242,7 +247,7 @@ public fun LivePageCanvas(
                     drawInk(localPoints, style.color, style.ink, style.highlighter, origin, scale)
                 }
             }
-            for (pointer in pointers) {
+            for (pointer in pointersState.value.values) {
                 if (pointer.pageId != page.id) continue
                 val member = names[pointer.connectionId]
                 val color = memberColor(member?.color ?: "", theme.accent)
@@ -465,30 +470,44 @@ private fun DrawScope.drawInk(
     scale: Float,
 ) {
     if (points.isEmpty()) return
-    fun at(p: LivePoint) = Offset(origin.x + (p.x * scale).toFloat(), origin.y + (p.y * scale).toFloat())
+    fun x(v: Double) = origin.x + (v * scale).toFloat()
+    fun y(v: Double) = origin.y + (v * scale).toFloat()
     if (points.size == 1) {
-        drawCircle(color, radius = (points[0].width * scale / 2).toFloat().coerceAtLeast(0.5f), center = at(points[0]))
+        drawCircle(color, radius = (points[0].width * scale / 2).toFloat().coerceAtLeast(0.5f), center = Offset(x(points[0].x), y(points[0].y)))
         return
     }
+    val pieces = InkGeometry.smoothPieces(points)
     if (highlighter || ink == LiveInk.Marker) {
+        // One translucent path, so overlapping pieces do not darken where they meet.
         val path = Path()
-        path.moveTo(at(points[0]).x, at(points[0]).y)
-        for (i in 1 until points.size) at(points[i]).let { path.lineTo(it.x, it.y) }
+        path.moveTo(x(pieces[0].x0), y(pieces[0].y0))
+        for (piece in pieces) path.quadraticTo(x(piece.cx), y(piece.cy), x(piece.x1), y(piece.y1))
         val width = (points.sumOf { it.width } / points.size * scale).toFloat()
         drawPath(path, color, style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round))
         return
     }
-    for (i in 1 until points.size) {
-        val a = points[i - 1]
-        val b = points[i]
-        drawLine(
-            color,
-            at(a),
-            at(b),
-            strokeWidth = ((a.width + b.width) / 2 * scale).toFloat().coerceAtLeast(0.5f),
-            cap = StrokeCap.Round,
-        )
+    // Each piece keeps its own point's width. Pieces whose widths round to the
+    // same quarter pixel share one path, which keeps long strokes cheap.
+    var path = Path()
+    var bucket = Int.MIN_VALUE
+    var started = false
+    fun flush() {
+        if (started) {
+            drawPath(path, color, style = Stroke(width = (bucket / 4f).coerceAtLeast(0.5f), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        }
     }
+    for (piece in pieces) {
+        val b = (piece.width * scale * 4).roundToInt()
+        if (b != bucket) {
+            flush()
+            path = Path()
+            path.moveTo(x(piece.x0), y(piece.y0))
+            bucket = b
+            started = true
+        }
+        path.quadraticTo(x(piece.cx), y(piece.cy), x(piece.x1), y(piece.y1))
+    }
+    flush()
 }
 
 private fun DrawScope.drawTextBox(text: LiveText, origin: Offset, scale: Float, measurer: TextMeasurer) {

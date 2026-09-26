@@ -52,6 +52,56 @@ public object InkGeometry {
         return hypot(px - (ax + t * dx), py - (ay + t * dy))
     }
 
+    /**
+     * One piece of a smoothed stroke: a quadratic curve from ([x0], [y0]) to
+     * ([x1], [y1]) bending towards ([cx], [cy]), drawn at [width].
+     */
+    public data class Piece(
+        val x0: Double, val y0: Double,
+        val cx: Double, val cy: Double,
+        val x1: Double, val y1: Double,
+        val width: Double,
+    )
+
+    /**
+     * A stroke as smooth curves: each sampled point becomes the control point
+     * of a quadratic curve between the midpoints on either side of it, so the
+     * line passes through no corners, and each piece keeps that point's own
+     * width. The first and last half-segments are straight, so the curve
+     * still starts and ends exactly at the first and last points. Every
+     * piece's end is the next one's start, so the pieces join without gaps.
+     */
+    public fun smoothPieces(points: List<LivePoint>): List<Piece> {
+        val n = points.size
+        if (n < 2) return emptyList()
+        if (n == 2) {
+            val a = points[0]
+            val b = points[1]
+            return listOf(Piece(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2, b.x, b.y, (a.width + b.width) / 2))
+        }
+        val pieces = ArrayList<Piece>(n)
+        val first = points[0]
+        val m01x = (first.x + points[1].x) / 2
+        val m01y = (first.y + points[1].y) / 2
+        pieces += Piece(first.x, first.y, (first.x + m01x) / 2, (first.y + m01y) / 2, m01x, m01y, first.width)
+        for (i in 1 until n - 1) {
+            val prev = points[i - 1]
+            val p = points[i]
+            val next = points[i + 1]
+            pieces += Piece(
+                (prev.x + p.x) / 2, (prev.y + p.y) / 2,
+                p.x, p.y,
+                (p.x + next.x) / 2, (p.y + next.y) / 2,
+                p.width,
+            )
+        }
+        val last = points[n - 1]
+        val mx = (points[n - 2].x + last.x) / 2
+        val my = (points[n - 2].y + last.y) / 2
+        pieces += Piece(mx, my, (mx + last.x) / 2, (my + last.y) / 2, last.x, last.y, last.width)
+        return pieces
+    }
+
     /** How a page of [pageWidth] x [pageHeight] points sits, whole and centred, in a view. */
     public data class Fit(val scale: Double, val offsetX: Double, val offsetY: Double) {
         public fun toPageX(viewX: Double): Double = (viewX - offsetX) / scale

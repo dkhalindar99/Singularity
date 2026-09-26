@@ -461,7 +461,7 @@ class RoomClientTest {
     // ---- Live ink ----------------------------------------------------------------
 
     @Test
-    fun liveInkIsBatchedEveryThirtyMillisecondsAndCommittedWithTheSameId() = runTest {
+    fun liveInkGoesOutAtOnceThenEverySixteenMillisecondsAndCommitsWithTheSameId() = runTest {
         val network = FakeNetwork()
         val client = joined(network)
         val streamer = client.beginStroke(page1, "pen", LiveColor(0.1, 0.2, 0.3), 2.5, id = "S1")
@@ -473,18 +473,18 @@ class RoomClientTest {
             network.last.presence(),
         )
 
-        advanceTimeBy(10)
+        advanceTimeBy(5)
         streamer.add(LivePoint(11.0, 21.0, 1.0, 0.01, 2.2))
-        advanceTimeBy(10)
+        advanceTimeBy(5)
         streamer.add(LivePoint(12.0, 22.0, 1.0, 0.02, 2.4))
         runCurrent()
-        assertEquals(1, network.last.presence().size) // held back: under 30 ms since the last
+        assertEquals(1, network.last.presence().size) // held back: under 16 ms since the last
 
-        advanceTimeBy(10)
+        advanceTimeBy(6)
         runCurrent()
         val second = network.last.presence()[1] as Presence.InkLive
         assertEquals(listOf(11.0, 21.0, 2.2, 12.0, 22.0, 2.4), second.p)
-        assertEquals(30L, testScheduler.currentTime)
+        assertEquals(16L, testScheduler.currentTime)
 
         advanceTimeBy(5)
         streamer.add(LivePoint(13.0, 23.0, 1.0, 0.03, 2.6))
@@ -520,19 +520,80 @@ class RoomClientTest {
     }
 
     @Test
-    fun pointerUpdatesAreThrottledLatestWins() = runTest {
+    fun hoverPointerAtMostEveryHundredMillisecondsLatestWins() = runTest {
         val network = FakeNetwork()
         val client = joined(network)
         client.sendPointer(page1, 1.0, 1.0)
-        client.sendPointer(page1, 2.0, 2.0)
-        client.sendPointer(page1, 3.0, 3.0, laser = true)
+        client.sendPointer(page1, 5.0, 5.0)
+        client.sendPointer(page1, 9.0, 9.0)
         runCurrent()
         assertEquals(listOf<Presence>(Presence.Pointer(page1, 1.0, 1.0, false)), network.last.presence())
-        advanceTimeBy(30); runCurrent()
-        assertEquals(Presence.Pointer(page1, 3.0, 3.0, true), network.last.presence().last())
-        assertEquals(2, network.last.presence().size)
+        advanceTimeBy(99); runCurrent()
+        assertEquals(1, network.last.presence().size)
+        advanceTimeBy(1); runCurrent()
+        assertEquals(listOf<Presence>(Presence.Pointer(page1, 1.0, 1.0, false), Presence.Pointer(page1, 9.0, 9.0, false)), network.last.presence())
         client.hidePointer()
         assertEquals(Presence.PointerHide, network.last.presence().last())
+    }
+
+    @Test
+    fun aPointerThatBarelyMovedIsNotSentAgain() = runTest {
+        val network = FakeNetwork()
+        val client = joined(network)
+        client.sendPointer(page1, 10.0, 10.0)
+        advanceTimeBy(200); runCurrent()
+        client.sendPointer(page1, 10.5, 10.6) // 0.78 pt
+        advanceTimeBy(200); runCurrent()
+        assertEquals(1, network.last.presence().size)
+        client.sendPointer(page1, 11.0, 10.0) // 1 pt
+        assertEquals(Presence.Pointer(page1, 11.0, 10.0, false), network.last.presence().last())
+        // After a hide, the same spot is sent again.
+        client.hidePointer()
+        advanceTimeBy(200); runCurrent()
+        client.sendPointer(page1, 11.0, 10.0)
+        assertEquals(Presence.Pointer(page1, 11.0, 10.0, false), network.last.presence().last())
+    }
+
+    @Test
+    fun theLaserGoesOutEveryThirtyThreeMilliseconds() = runTest {
+        val network = FakeNetwork()
+        val client = joined(network)
+        client.sendPointer(page1, 1.0, 1.0, laser = true)
+        client.sendPointer(page1, 5.0, 5.0, laser = true)
+        advanceTimeBy(32); runCurrent()
+        assertEquals(1, network.last.presence().size)
+        advanceTimeBy(1); runCurrent()
+        assertEquals(Presence.Pointer(page1, 5.0, 5.0, true), network.last.presence().last())
+    }
+
+    @Test
+    fun noPointerWhileDrawing() = runTest {
+        val network = FakeNetwork()
+        val client = joined(network)
+        client.sendPointer(page1, 1.0, 1.0)
+        client.sendPointer(page1, 50.0, 50.0) // waiting for its 100 ms
+        val streamer = client.beginStroke(page1, "pen", LiveColor(0.0, 0.0, 0.0), 2.0, id = "S")
+        client.sendPointer(page1, 90.0, 90.0)
+        advanceTimeBy(500); runCurrent()
+        // The hover dot is taken away when the pen comes down; nothing else is sent.
+        assertEquals(listOf(Presence.Pointer(page1, 1.0, 1.0, false), Presence.PointerHide), network.last.presence())
+        streamer.add(LivePoint(1.0, 1.0, 1.0, 0.0, 2.0))
+        streamer.finish()
+        client.sendPointer(page1, 90.0, 90.0)
+        assertEquals(Presence.Pointer(page1, 90.0, 90.0, false), network.last.presence().last())
+    }
+
+    @Test
+    fun inkActivityCountsInkAndTextButNotPresenceOrPolicy() = runTest {
+        val network = FakeNetwork()
+        val client = joined(network)
+        val start = client.inkActivity.value
+        network.last.receive(ServerMessage.OpFrame(1, "uid-host", "h:1", Op.RoomPolicy(DrawPolicy.HOST)))
+        network.last.receive(ServerMessage.PresenceFrame(PresenceSender("uid-ravi", "c3"), Presence.Pointer(page1, 1.0, 1.0)))
+        assertEquals(start, client.inkActivity.value)
+        network.last.receive(ServerMessage.PresenceFrame(PresenceSender("uid-ravi", "c3"), Presence.InkLive(page1, "S9", p = listOf(1.0, 2.0, 2.0))))
+        network.last.receive(ServerMessage.OpFrame(2, "uid-ravi", "r:1", Op.StrokeAdd(page1, stroke("S9"))))
+        assertEquals(start + 2, client.inkActivity.value)
     }
 
     @Test
