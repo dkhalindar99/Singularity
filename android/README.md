@@ -50,13 +50,17 @@ What `live-core`'s tests cover:
   `removed` (also instead of `welcome`) ending for good; fatal and retryable
   errors; pings every 20 s; undo/redo of strokes (erase/restore pairs, and
   redo of `stroke.add` as `stroke.restore`), moves and texts, redo cleared by
-  a new action, a rejected undo dropping its entry; live ink sent at most
-  every 30 ms, rounded to 0.1, `done` then `stroke.add` with the same id;
-  pointer throttling; view and hand resent after a reconnect; remote
+  a new action, a rejected undo dropping its entry; live ink sent at once, then at most
+  every 16 ms, rounded to 0.1, `done` then `stroke.add` with the same id;
+  pointer throttling (hover every 100 ms after a move of 1 pt, laser every 33 ms, none while drawing); view and hand resent after a reconnect; remote
   previews growing, swapped for the committed stroke, cleared when their
   stroke never comes or their sender leaves; an op over ~1,000 KiB dropped
   locally as a `too-large` reject (never pending, never an undo step), while
   a full 5,000-point stroke still fits one frame;
+- `VoiceIdlePolicy` on an injected clock (voice left after 2 minutes in
+  the background and rejoined on return; after 15 quiet minutes until a
+  tap; any ink or speech keeps it), and the smoothed-curve pieces the canvas
+  draws;
 - `LiveApi` against a local HTTP server (create, lookup and its 404, voice
   ticket and its 503, asset upload and download, snapshot, errors);
 - `LiveServerTest`: a host and a guest, both real `RoomClient`s over OkHttp
@@ -120,7 +124,7 @@ the clock so ops after an app relaunch are never mistaken for resends.
 Built and tested on Linux with JDK 21, Gradle 9.6.0 and Android SDK platform
 37.0 / build-tools 37.0.0 installed from Google's command-line tools:
 
-- `./gradlew :live-core:test` — 55 tests; all pass. `LiveServerTest` (one
+- `./gradlew :live-core:test` — 66 tests; all pass. `LiveServerTest` (one
   of them) is skipped without `LIVE_SERVER_URL`; it was run against
   `../server` started locally with dev tokens, ten times in a row without a
   failure. It found, and now guards, a race where `Connected` was

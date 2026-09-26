@@ -236,7 +236,7 @@ Presence kinds:
 | kind | fields | meaning |
 |---|---|---|
 | `ink.live` | `pageId`, `liveId`, `ink`, `color`, `width`, `p` (flat `[x,y,w, x,y,w, …]`), `done` (bool) | Points of a stroke still being drawn: the first batch at once, then at most one message every 16 ms (one screen frame), so a friend sees the line grow as it is drawn. `p` holds only the points since the last message. `done: true` ends it; the committed `stroke.add` follows. `liveId` is the stroke's future `id`, so a receiver swaps the preview for the stroke without a flicker. A finished preview whose stroke has not arrived within 1.5 s (it was rejected) is dropped. |
-| `pointer` | `pageId`, `x`, `y`, `laser` (bool) | Where the person's pen or finger is. `laser: true` draws a fading laser dot. Sent at most every 100 ms while hovering and only after a move of 1 point or more; the laser at most every 33 ms. Not sent while the person is drawing: their `ink.live` already shows where the pen is. |
+| `pointer` | `pageId`, `x`, `y`, `laser` (bool) | Where the person's pen or finger is. `laser: true` draws a fading laser dot. Sent at most every 100 ms while hovering and only after a move of 1 point or more; the laser at most every 33 ms. Not sent while the person is drawing: their `ink.live` already shows where the pen is, and a hover dot that was showing is hidden (`pointer.hide`) when the pen touches down. |
 | `pointer.hide` | — | Pointer left the page. |
 | `view` | `pageId` | The page this person is looking at. |
 | `hand` | `raised` (bool) | Raise or lower a hand. |

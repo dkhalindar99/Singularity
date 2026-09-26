@@ -240,6 +240,11 @@ export class CanvasView {
     this.overlay.setPointerCapture(event.pointerId);
 
     if (this.tool === "pen" || this.tool === "highlighter") {
+      // The live ink shows where the pen is now; don't leave a dot beside it.
+      if (this.lastPointer) {
+        this.client.hidePointer();
+        this.lastPointer = null;
+      }
       const spec = TOOLS[this.tool];
       const color = this.tool === "highlighter" ? { ...this.color, a: spec.alpha } : this.color;
       this.local = {
