@@ -52,9 +52,17 @@ ios/
     `duplicate` its undo/redo entry goes too. A `duplicate` reject only stops
     treating the op as pending, since the welcome state already has it.
   - `removed` (including when a removed person tries to rejoin) ends the
-    client for good; `error` ends it too, except `rate-limited`, which
-    reconnects with backoff.
-  - clientOpId is `"<deviceId>:<counter>"`.
+    client for good. An `error` ends it only for `bad-hello`, `no-such-room`,
+    `room-full`, `guests-not-allowed` and `protocol-mismatch`; any other code
+    (`rate-limited`, `unauthenticated`, `too-large`, unknown) reconnects with
+    the growing backoff. Because a frame sent just before a close can be lost
+    (it is, on Linux), the server's close reason is read too: a close whose
+    reason is `room-ended`, `removed-by-host` or one of those five codes ends
+    the client. The reason text is used, not the close code, since
+    URLSession cannot represent the server's 4000-range codes.
+  - clientOpId is `"<deviceId>:<counter>"`, the counter starting from the
+    clock in milliseconds when the client is created (injectable for tests),
+    so a relaunched app never repeats an earlier launch's ids.
   - Ops: `addStroke`, `eraseStrokes`, `restoreStrokes`, `moveItems`,
     `upsertText`, `eraseTexts`, `addPage(_:after:)`, `setPolicy(_:penHolder:)`,
     `setHostPage`.
@@ -65,21 +73,26 @@ ios/
     the same upsert; text.erase → upsert as it was / the same erase. Undo and
     redo go out as new ops with fresh clientOpIds. Pages, policy and host page
     are not undoable.
-  - A stroke past 5,000 points or a 240 KiB frame is sent as several strokes
-    that share their joining points and undo together (see "Disagreements"
-    below for why).
+  - One stroke is always one `stroke.add`. A stroke over 5,000 points is not
+    sent; the canvas carries a long stroke on as new strokes from the last
+    point (`LiveStroke.continuedAtMaximumPoints()`), as the web canvas does.
+    Any op whose JSON is over 1,000 KiB is never sent: it is dropped locally
+    (not pending, not an undo step) and reported as a rejection with reason
+    `too-large`. Rejections reach `onReject` and `lastRejection`, and the
+    room screen shows a short notice.
   - Presence out: `beginLiveInk(...)` returns a `LiveInkStreamer`, which
     sends `ink.live` at most every 30 ms (points rounded to 0.1 the way
     JavaScript's `Math.round` does), then `done: true`, then `stroke.add` with
     the same id. `sendPointer`, `hidePointer`, `sendView`, `setHandRaised`.
     Presence is not queued while offline.
-  - Presence in, per connectionId: `remoteInk` (previews dropped on `done`,
-    on the `stroke.add` with that id, or when the member leaves), `pointers`,
+  - Presence in, per connectionId: `remoteInk` (a preview stays after `done`
+    until the `stroke.add` with its id swaps it out, and is dropped 1.5 s
+    after `done` if that never comes, or when the member leaves), `pointers`,
     `views`; `view` and `hand` also update `members`.
   - Host controls: `remove(uid:)`, `endRoom()`.
   - Reconnect backoff 0.5, 1, 2, 4, then every 8 s; ping every 20 s.
 - **`LiveAPI`** — `createRoom`, `lookup(code:)`, `videoToken` (nil on 503),
-  `uploadAsset`, `asset`, `snapshot`. Takes an injectable HTTP function.
+  `uploadAsset`, `asset`, `snapshot` (`{ room, ended, state }`). Takes an injectable HTTP function.
 - **Transport** — `WebSocketTransport` with `URLSessionWebSocketTransport`
   (real) and `InMemoryTransport` (tests, previews); `LiveScheduler` with
   `TaskScheduler` (real) and `ManualScheduler` (tests).
@@ -109,7 +122,9 @@ Linux and macOS the module is empty. It re-exports LiveCore.
   rebuilt with `transform: .identity`; the upper one takes the local pen, so
   drawing feels exactly like the notebook. When a stroke ends it is converted
   (transform baked in, as `extractPortableStrokes` does), sent, and removed
-  from the input canvas. A passive gesture recognizer on the input canvas
+  from the input canvas; one longer than 5,000 points is committed as
+  several strokes, each carrying on from the last point (PencilKit owns the
+  gesture, so this happens when the stroke ends, not mid-draw). A passive gesture recognizer on the input canvas
   watches the same touches (coalesced) to stream them with
   `LiveInkStreamer`. Remote strokes in progress, pointers and the fading
   laser are drawn in a SwiftUI `Canvas` overlay in each member's colour, with
@@ -159,10 +174,48 @@ ignored); every client-to-server message both built from Swift values and
 round-tripped, compared by value; and `RoomClient` against the in-memory
 transport and manual clock — optimistic pending ops, resend after welcome,
 reject rollback, `duplicate` reject, seq-gap reconnect, backoff, ping,
-`removed` / rejoin refused, errors, undo/redo pairs (including undo-then-redo
-of stroke.add), the live-ink throttle and done ordering, long-stroke
-splitting, and presence cleanup. Also `LiveAPI`, hit testing and the hosting
-seam.
+`removed` / rejoin refused, error codes (terminal or reconnect with growing
+backoff), close reasons, the clock-based op counter, too-large ops, undo/redo
+pairs (including undo-then-redo of stroke.add), the live-ink throttle and
+done ordering, finished previews expiring after 1.5 s, the 5,000-point rule,
+and presence cleanup. Also `LiveAPI`, hit testing and the hosting seam.
+
+### Against a real server
+
+`LiveServerTests` (skipped unless `LIVE_SERVER_URL` is set) runs two real
+`RoomClient`s over the real `URLSessionWebSocketTransport`, plus `LiveAPI`:
+
+```sh
+cd server && LIVE_DEV_AUTH=1 PORT=8791 node src/server.js &
+cd ios/SpaceNotesLive && LIVE_SERVER_URL=http://localhost:8791 swift test --filter LiveServerTests
+```
+
+It covers: a stroke reaching the other person exactly as sent; undo then redo
+reaching them; a live-ink preview replaced by its stroke; the host locking
+drawing, the guest's stroke rejected and rolled back, then the pen given to
+the guest; an op sent just before the socket drops (its answer held back)
+delivered exactly once, answered `duplicate` on resend and not rolled back;
+an op made while offline delivered exactly once on reconnect; the snapshot
+matching the room; and ending the room ending both clients without
+reconnecting. Each run uses fresh uids, because the server limits rooms
+created per account per hour.
+
+**On Linux** two things about swift-corelibs-foundation's WebSocket matter:
+
+- Ubuntu 24.04's libcurl (8.5) is built without WebSocket support, and every
+  connection fails with "WebSockets not supported by libcurl". Build libcurl
+  8.11 or later with `--with-openssl --enable-versioned-symbols
+  --enable-websockets` (the versioned symbols must be `CURL_OPENSSL_4`, which
+  FoundationNetworking links against) and run with
+  `LD_LIBRARY_PATH=<that build>/lib`.
+- Even then it silently drops outgoing messages larger than somewhere between
+  16 and 48 KB while the socket stays open (Node sends the same 797 KB frame
+  to the same server without trouble). So
+  `testAFullLengthStrokeCrossesInOneFrame` is skipped on Linux. It is a
+  limitation of the Linux Foundation, not of the protocol or of Apple's
+  URLSession, but it has not been tried on Apple's either (see below). The
+  same stack also lost a data frame sent just before a close, which is why the
+  client reads the close reason as well.
 
 ## How the notebook embeds it
 
@@ -200,10 +253,11 @@ and add them to `project.yml` under `packages:`. Then:
 This machine is Linux (Ubuntu 24.04, x86_64) with the Swift 6.1.2 release
 toolchain; there is no Xcode, UIKit, SwiftUI or PencilKit.
 
-- **Compiled and tested:** `LiveCore` and `LiveCoreTests` — 56 tests, all
-  passing, and a clean build under `-strict-concurrency=complete`. The
-  URLSession WebSocket transport compiles (FoundationNetworking) but was not
-  run against a live server; the server was not written yet.
+- **Compiled and tested:** `LiveCore` and `LiveCoreTests`: 61 offline tests,
+  all passing, and a clean build under `-strict-concurrency=complete`. The 8
+  live tests passed against the real room server (Node, dev auth) three runs
+  in a row, over the real URLSession WebSocket transport, with one skipped on
+  Linux as described above.
 - **Compiled as an empty module only:** `LiveUI`. None of its SwiftUI,
   UIKit or PencilKit code has been compiled or run. It was written against
   the iOS 17 SDK APIs with care (PencilKit calls mirror the notebook's own
@@ -216,11 +270,16 @@ toolchain; there is no Xcode, UIKit, SwiftUI or PencilKit.
   `CameraCaptureOptions`, `VideoPublishOptions`, `VideoParameters` presets,
   `RoomDelegate`, `SwiftUIVideoView`), read directly from the repository, but
   never built.
+- **Not yet run on Apple's URLSession:** the live tests. Run them on a Mac
+  (`swift test` with `LIVE_SERVER_URL`), where the large-frame test is not
+  skipped.
 
 ## Disagreements with the spec
 
-- **A 5,000-point stroke does not fit in a 256 KiB frame.** A stroke point
-  with azimuth and altitude at full double precision is about 150 bytes of
-  JSON, so a frame fills up at roughly 1,700 points. The client therefore
-  splits by encoded size as well as by point count. The spec may want to say
-  so, or lower the point limit, so the other clients do the same.
+None open. Two raised earlier are now settled in PROTOCOL.md: the frame
+limit is 1 MiB so a 5,000-point stroke fits one frame, and the snapshot route
+returns `{ room, ended, state }`.
+
+One suggestion: the server already puts the `removed` reason or `error` code
+in its WebSocket close reason. PROTOCOL.md could say so, since clients rely on
+it when the last frame is lost.

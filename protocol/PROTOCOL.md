@@ -321,6 +321,13 @@ A person the host removed who tries to join again gets `removed` with
 
 `pong` — `{ "type": "pong", "t": 123 }`.
 
+After `removed` or `error` the server closes the WebSocket with the same
+reason text (`removed-by-host`, `room-ended`, or the error code) and a code
+in the 4000 range. Some WebSocket stacks lose a frame sent just before a
+close, so a client treats a close whose reason is one of these exactly as if
+the frame had arrived. Read the reason, not the code: some stacks cannot
+report 4000-range codes.
+
 ## Reconnecting
 
 Cloud Run closes every WebSocket after at most 60 minutes, and phones drop
