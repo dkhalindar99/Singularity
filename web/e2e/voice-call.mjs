@@ -62,5 +62,17 @@ await host.waitForFunction(() => document.getElementById("mic").textContent === 
 await guest.waitForFunction(() => [...document.querySelectorAll(".tile-name span")].some((s) => s.textContent.includes("Asha") && s.textContent.includes("muted")), null, { timeout: 10000 });
 console.log("guest sees host muted: yes");
 await guest.screenshot({ path: `${shots}/guest-voice.png` });
+
+// A quiet room leaves voice (shortened from 15 minutes for the test), and a
+// tap brings it back; the other side sees the person leave and return.
+await host.click("#mic"); // unmute again, so rejoining keeps the mic on
+await host.evaluate(() => { window.__live.idle.policy.quietMs = 0; window.__live.idle.check(); });
+await host.waitForFunction(() => document.getElementById("mic").textContent.startsWith("Voice paused"));
+await guest.waitForFunction(() => window.__live.voice.room.remoteParticipants.size === 0, null, { timeout: 10000 });
+console.log("quiet room: host left voice, guest sees it: yes");
+await host.click("#mic");
+await host.waitForFunction(() => document.getElementById("mic").textContent === "Mic on", null, { timeout: 20000 });
+await guest.waitForFunction(() => window.__live.voice.room.remoteParticipants.size === 1, null, { timeout: 10000 });
+console.log("tap to resume: host back in voice with the mic on: yes");
 console.log("errors:", errors);
 await browser.close();

@@ -46,23 +46,32 @@ function line(ctx, x1, y1, x2, y2) {
 }
 
 /**
- * One stroke from points `[[x, y, width], …]`. Pens vary their width point
- * by point; the marker (highlighter) is one even, see-through band, drawn as
- * a single path so its overlaps do not darken.
+ * One stroke from points `[[x, y, width], …]`, drawn as a smooth curve: each
+ * piece is a quadratic curve from the midpoint before a point to the midpoint
+ * after it, with the point itself pulling the curve. So a line looks like a
+ * pen's, not a chain of straight segments, and a friend's line grows smoothly
+ * while it is still arriving. Pens vary their width point by point; the
+ * marker (highlighter) is one even, see-through band, drawn as a single path
+ * so its overlaps do not darken.
  */
 export function drawPoints(ctx, points, { ink, color, width }) {
   if (!points.length) return;
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
+  const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
   if (ink === "marker" || color.a < 1) {
     ctx.strokeStyle = cssColor({ ...color, a: 1 });
     ctx.globalAlpha = Math.min(1, color.a);
     ctx.lineWidth = width;
     ctx.beginPath();
     ctx.moveTo(points[0][0], points[0][1]);
-    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
     if (points.length === 1) ctx.lineTo(points[0][0] + 0.01, points[0][1]);
+    for (let i = 1; i < points.length - 1; i++) {
+      const [mx, my] = mid(points[i], points[i + 1]);
+      ctx.quadraticCurveTo(points[i][0], points[i][1], mx, my);
+    }
+    if (points.length > 1) ctx.lineTo(points[points.length - 1][0], points[points.length - 1][1]);
     ctx.stroke();
   } else {
     ctx.strokeStyle = cssColor(color);
@@ -72,13 +81,17 @@ export function drawPoints(ctx, points, { ink, color, width }) {
       ctx.arc(points[0][0], points[0][1], Math.max(0.5, points[0][2] / 2), 0, Math.PI * 2);
       ctx.fill();
     }
+    // Piece i runs from the midpoint before point i to the midpoint after it;
+    // the first piece starts at the first point, the last ends at the last.
     for (let i = 1; i < points.length; i++) {
-      const [x0, y0, w0] = points[i - 1];
-      const [x1, y1, w1] = points[i];
-      ctx.lineWidth = Math.max(0.5, (w0 + w1) / 2);
+      const from = i === 1 ? points[0] : mid(points[i - 1], points[i]);
+      const last = i === points.length - 1;
+      const to = last ? points[i] : mid(points[i], points[i + 1]);
+      const control = last ? mid(from, to) : points[i];
+      ctx.lineWidth = Math.max(0.5, (points[i - 1][2] + points[i][2]) / 2);
       ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
+      ctx.moveTo(from[0], from[1]);
+      ctx.quadraticCurveTo(control[0], control[1], to[0], to[1]);
       ctx.stroke();
     }
   }

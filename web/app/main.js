@@ -9,6 +9,7 @@ import { RoomClient } from "/src/client/room-client.js";
 import { LiveApi } from "/src/client/api.js";
 import { CanvasView } from "/src/ui/canvas-view.js";
 import { deviceId, makeAuth } from "/app/auth.js";
+import { VoiceIdlePolicy } from "/src/core/voice-idle.js";
 
 const $ = (id) => document.getElementById(id);
 const serverUrl = location.origin;
@@ -179,6 +180,7 @@ function wireRoom() {
   });
   client.addEventListener("presence", () => renderPages());
   client.addEventListener("history", renderToolbar);
+  client.addEventListener("activity", () => idle.activity());
   client.addEventListener("reject", (e) => {
     if (e.detail.reason !== "duplicate") toast(REJECT_TEXT[e.detail.reason] ?? "That change was not saved.");
   });
@@ -498,7 +500,12 @@ $("leave").addEventListener("click", () => client.disconnect());
 
 // ---- voice ---------------------------------------------------------------------
 
-async function startVoice() {
+const idle = new VoiceIdlePolicy();
+let voicePaused = null; // null, "background" or "quiet"
+let micWanted = true; // the microphone as the person left it, for rejoining
+let voiceTimer = null;
+
+async function startVoice({ micOn = true } = {}) {
   let ticket;
   try {
     ticket = await api.videoToken(client.roomId); // the LiveKit ticket; microphone only
@@ -511,30 +518,75 @@ async function startVoice() {
   }
   try {
     const { LiveVoice } = await import("/src/voice/livekit.js");
-    voice = await LiveVoice.connect({ url: ticket.url, token: ticket.token });
+    voice = await LiveVoice.connect({ url: ticket.url, token: ticket.token, startWithMic: micOn });
   } catch (err) {
     toast("Voice could not start. You can still write together.");
     console.warn(err);
     return;
   }
   window.__live.voice = voice;
+  window.__live.idle = { policy: idle, check: checkVoiceIdle };
+  voicePaused = null;
+  idle.resumed();
   voice.attachAudio($("audio"));
   voice.addEventListener("change", () => {
+    if (voice?.speaking.size) idle.activity();
     renderMic();
     renderTiles();
   });
   $("mic").disabled = false;
   renderMic();
+  clearInterval(voiceTimer);
+  voiceTimer = setInterval(checkVoiceIdle, 10_000);
 }
 
-function renderMic() {
+/** Leaves voice when nobody is using it (PROTOCOL.md, "Voice and cost"). */
+function checkVoiceIdle() {
   if (!voice) return;
-  $("mic").setAttribute("aria-pressed", String(voice.micEnabled));
-  $("mic").textContent = voice.micEnabled ? "Mic on" : "Mic off";
+  const reason = idle.pauseReason();
+  if (!reason) return;
+  micWanted = voice.micEnabled;
+  voicePaused = reason;
+  const leaving = voice;
+  voice = null;
+  window.__live.voice = null;
+  leaving.disconnect();
+  $("audio").replaceChildren();
+  renderMic();
+  renderTiles();
+}
+
+function resumeVoice() {
+  if (voice || !voicePaused) return;
+  voicePaused = "resuming";
+  renderMic();
+  startVoice({ micOn: micWanted });
+}
+
+document.addEventListener("visibilitychange", () => {
+  idle.setHidden(document.hidden);
+  // Coming back to a room whose voice was left in the background rejoins it.
+  if (!document.hidden && voicePaused === "background") resumeVoice();
+});
+
+function renderMic() {
+  const mic = $("mic");
+  if (voicePaused) {
+    mic.disabled = voicePaused === "resuming";
+    mic.setAttribute("aria-pressed", "false");
+    mic.textContent = voicePaused === "resuming" ? "Joining voice…" : "Voice paused — tap to resume";
+    return;
+  }
+  if (!voice) return;
+  mic.setAttribute("aria-pressed", String(voice.micEnabled));
+  mic.textContent = voice.micEnabled ? "Mic on" : "Mic off";
   if (!voice.canPlayAudio) toast("Tap anywhere to hear the others");
 }
 
-$("mic").addEventListener("click", () => voice?.setMic(!voice.micEnabled).catch(() => toast("The microphone is blocked in this browser.")));
+$("mic").addEventListener("click", () => {
+  if (voicePaused) return resumeVoice();
+  voice?.setMic(!voice.micEnabled).catch(() => toast("The microphone is blocked in this browser."));
+});
 document.addEventListener("click", () => {
   if (voice && !voice.canPlayAudio) voice.startAudio();
 });
@@ -543,6 +595,7 @@ document.addEventListener("click", () => {
 
 function leaveRoom(reason) {
   const wasHost = client?.isHost;
+  clearInterval(voiceTimer);
   voice?.disconnect();
   voice = null;
   view?.destroy();

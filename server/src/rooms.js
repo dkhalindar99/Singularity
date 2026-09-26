@@ -16,7 +16,10 @@ const MEMBER_COLORS = ["#3B5BDB", "#E4572E", "#2B9348", "#9C36B5", "#F08C00", "#
 const PRESENCE_KINDS = new Set(["ink.live", "pointer", "pointer.hide", "view", "hand"]);
 const MAX_LIVE_NUMBERS = 3000; // 1,000 points per ink.live batch is far more than 30 ms of pen
 const REMEMBERED_OP_IDS = 50_000;
-const SAVE_DELAY_MS = 3000;
+// Each save is a paid Cloud Storage write, so a busy room is saved at most
+// every 30 s (plus when the last person leaves, and on shutdown). At 3 s the
+// writes cost about as much as all the ink itself.
+const SAVE_DELAY_MS = 30_000;
 
 export function randomCode(random = crypto.randomInt) {
   let code = "";

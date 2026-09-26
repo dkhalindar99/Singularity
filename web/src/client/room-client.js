@@ -180,6 +180,7 @@ export class RoomClient extends EventTarget {
         if (message.op?.kind === "stroke.add") this.#dropPreviewsFor(message.op.stroke?.id);
         this.#recompute();
         this.#emit("op", message);
+        this.#emit("activity");
         return;
       }
       case "reject": {
@@ -228,6 +229,7 @@ export class RoomClient extends EventTarget {
     const id = from.connectionId;
     switch (presence.kind) {
       case "ink.live": {
+        this.#emit("activity"); // someone is drawing: the room is in use
         const key = `${id}/${presence.liveId}`;
         if (presence.done) {
           // Keep drawing it until the committed stroke arrives, so it never blinks.
@@ -487,12 +489,12 @@ function appendPoints(preview, p) {
 export const round1 = (n) => Math.round(n * 10) / 10;
 
 /**
- * Batches the points of a stroke being drawn into `ink.live` messages, at
- * most one every `intervalMs`. The finished stroke is committed separately
+ * Batches the points of a stroke being drawn into `ink.live` messages: the
+ * first at once, then at most one every `intervalMs` (16 ms, one frame). The finished stroke is committed separately
  * (addStroke) with the same id, so receivers swap preview for stroke.
  */
 export class LiveInkStreamer {
-  constructor(client, { intervalMs = 30, timers = globalThis } = {}) {
+  constructor(client, { intervalMs = 16, timers = globalThis } = {}) {
     this.client = client;
     this.intervalMs = intervalMs;
     this.timers = timers;
@@ -508,7 +510,9 @@ export class LiveInkStreamer {
     if (!c) return;
     c.buffer.push(round1(x), round1(y), round1(w));
     if (c.timer) return;
-    const wait = Math.max(0, c.lastSent + this.intervalMs - Date.now());
+    const wait = c.lastSent + this.intervalMs - Date.now();
+    // A frame has passed since the last message: send now, not on a timer.
+    if (wait <= 0) return this.#flush(false);
     c.timer = this.timers.setTimeout(() => this.#flush(false), wait);
   }
 

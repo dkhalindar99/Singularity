@@ -10,7 +10,9 @@
 import { LiveInkStreamer, round1 } from "../client/room-client.js";
 import { drawBackground, drawPoints, drawPointer, drawStroke, drawText, distanceToStroke, strokePoints, textAt } from "./page-renderer.js";
 
-const POINTER_EVERY_MS = 50;
+// PROTOCOL.md, `pointer`: hover at most 10 times a second, the laser 30.
+const POINTER_EVERY_MS = 100;
+const LASER_EVERY_MS = 33;
 const LASER_FADE_MS = 700;
 const ERASER_RADIUS = 8;
 const MAX_POINTS = 5000;
@@ -230,7 +232,7 @@ export class CanvasView {
     if (this.tool === "laser") {
       this.overlay.setPointerCapture(event.pointerId);
       this.laserDown = true;
-      this.client.sendPointer(page.id, x, y, true);
+      this.#sendPointer(page.id, x, y, true, Date.now());
       this.#addLocalLaser(x, y);
       return;
     }
@@ -273,8 +275,8 @@ export class CanvasView {
     const { x, y } = this.#toPage(event);
     const now = Date.now();
     if (this.tool === "laser" && this.laserDown) {
-      this.client.sendPointer(page.id, x, y, true);
       this.#addLocalLaser(x, y);
+      if (now - this.lastPointerSent >= LASER_EVERY_MS) this.#sendPointer(page.id, x, y, true, now);
       return;
     }
     if (this.local) {
@@ -285,10 +287,17 @@ export class CanvasView {
       this.dragging.dx = x - this.dragging.startX;
       this.dragging.dy = y - this.dragging.startY;
     }
-    if (now - this.lastPointerSent > POINTER_EVERY_MS && this.tool !== "laser") {
-      this.lastPointerSent = now;
-      this.client.sendPointer(page.id, x, y, false);
-    }
+    // While drawing, the live ink already shows where the pen is.
+    if (this.local || this.tool === "laser") return;
+    const last = this.lastPointer;
+    const moved = !last || Math.abs(last.x - x) >= 1 || Math.abs(last.y - y) >= 1;
+    if (moved && now - this.lastPointerSent >= POINTER_EVERY_MS) this.#sendPointer(page.id, x, y, false, now);
+  }
+
+  #sendPointer(pageId, x, y, laser, now) {
+    this.lastPointerSent = now;
+    this.lastPointer = { x, y };
+    this.client.sendPointer(pageId, x, y, laser);
   }
 
   #up(event, cancelled = false) {

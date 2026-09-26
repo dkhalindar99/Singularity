@@ -27,6 +27,9 @@ export class LiveVoice extends EventTarget {
     this.room = new lk.Room({
       dynacast: true,
       audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      // Speech, not music: about 24 kbps instead of 48, with silence sent as
+      // almost nothing (DTX). Half the mobile data for the same voice.
+      publishDefaults: { audioPreset: lk.AudioPresets.speech, dtx: true },
     });
     this.speaking = new Set();
   }
