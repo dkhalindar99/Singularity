@@ -319,6 +319,27 @@ connections all the time, so reconnecting is normal, not an error. A client:
 4. Re-applies its own unacknowledged ops on top, locally, and re-sends them
    with their original `clientOpId`. The server skips any it already sequenced.
 
+## Undo and redo (client behaviour)
+
+Undo only ever reverses **your own** changes, and it does so by sending a new
+op, never by rewinding the log. When a client sends an undoable op it records
+a pair, worked out from the state *before* the op:
+
+| op sent | undo sends | redo sends |
+|---|---|---|
+| `stroke.add` | `stroke.erase` of that stroke | `stroke.restore` of it (a second `stroke.add` with the same id would be ignored) |
+| `stroke.erase` | `stroke.restore` of the ids that were not already erased | the same `stroke.erase` |
+| `stroke.restore` | `stroke.erase` of the same ids | the same `stroke.restore` |
+| `items.move` | `items.move` by `-dx`, `-dy` | the same move |
+| `text.upsert` (new text) | `text.erase` of it | the same upsert |
+| `text.upsert` (existing text) | `text.upsert` of the previous text | the same upsert |
+| `text.erase` | `text.upsert` of the text as it was | the same `text.erase` |
+
+`page.add`, `room.policy` and `host.page` are not undoable. Undo and redo ops
+get fresh `clientOpId`s and are not themselves recorded as new undo steps. A
+new undoable op clears the redo stack. If an undo or redo op is rejected, that
+step is dropped.
+
 ## HTTP API
 
 Every route except `GET /health` needs `Authorization: Bearer <Firebase ID token>`.

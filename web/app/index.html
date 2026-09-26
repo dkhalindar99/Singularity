@@ -1,0 +1,137 @@
+<!doctype html>
+<!-- Copyright (c) 2026 Pillikandla Dada Khalindar. All rights reserved. -->
+<!-- Proprietary and confidential. Use is governed by the LICENSE file. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SpaceNotes Live</title>
+  <meta name="description" content="Study together on one shared notebook: talk, see each other and write on the same page.">
+  <link rel="icon" href="/app/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app/styles.css">
+</head>
+<body>
+  <main id="lobby" class="lobby" hidden>
+    <section class="lobby-card">
+      <p class="eyebrow">SpaceNotes Live</p>
+      <h1>Study on one notebook, together</h1>
+      <p class="lede">Everyone sees the same page. Everyone can write on it. Talk while you do.</p>
+
+      <label class="field">
+        <span>Your name</span>
+        <input id="name" autocomplete="nickname" maxlength="40" placeholder="How friends will see you">
+      </label>
+
+      <form id="join-form" class="lobby-block">
+        <h2>Join a room</h2>
+        <div class="row">
+          <input id="join-code" class="code-input" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Room code" aria-label="Room code">
+          <button class="primary" type="submit">Join</button>
+        </div>
+      </form>
+
+      <form id="create-form" class="lobby-block">
+        <h2>Start a room</h2>
+        <label class="field">
+          <span>Topic</span>
+          <input id="create-title" maxlength="120" placeholder="Cardiology — lecture 4">
+        </label>
+        <div class="row">
+          <label class="field grow">
+            <span>Paper</span>
+            <select id="create-paper">
+              <option value="blank">Blank</option>
+              <option value="lined" selected>Lined</option>
+              <option value="grid">Grid</option>
+              <option value="dotted">Dotted</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Pages</span>
+            <input id="create-pages" type="number" min="1" max="50" value="3">
+          </label>
+        </div>
+        <label class="check"><input id="create-guests" type="checkbox" checked> Friends without an account may join</label>
+        <button class="primary wide" type="submit">Start room</button>
+      </form>
+      <p id="lobby-error" class="error" role="alert"></p>
+    </section>
+  </main>
+
+  <main id="room" class="room" hidden>
+    <header class="room-bar">
+      <div class="room-title">
+        <strong id="room-title"></strong>
+        <button id="copy-link" class="chip" title="Copy the invite link"><span id="room-code"></span> · Copy invite</button>
+        <span id="status" class="status"></span>
+      </div>
+      <div class="room-actions">
+        <button id="follow" class="chip toggle" aria-pressed="true">Follow host</button>
+        <button id="people-button" class="chip">People <span id="people-count"></span></button>
+        <button id="leave" class="danger">Leave</button>
+      </div>
+    </header>
+
+    <section id="tiles" class="tiles" aria-label="People in the room"></section>
+
+    <div class="room-body">
+      <nav id="pages" class="pages" aria-label="Pages"></nav>
+      <section id="stage" class="stage">
+        <div id="follow-hint" class="follow-hint" hidden></div>
+      </section>
+      <aside id="people" class="people" hidden>
+        <h2>People</h2>
+        <div id="policy" class="policy" hidden>
+          <label class="field">
+            <span>Who can write</span>
+            <select id="policy-select">
+              <option value="everyone">Everyone</option>
+              <option value="host">Only me</option>
+              <option value="pen">One person at a time</option>
+            </select>
+          </label>
+        </div>
+        <ul id="people-list"></ul>
+        <button id="end-room" class="danger wide" hidden>End room for everyone</button>
+      </aside>
+    </div>
+
+    <footer class="toolbar" role="toolbar" aria-label="Tools">
+      <div class="group" id="tools">
+        <button data-tool="pen" title="Pen">Pen</button>
+        <button data-tool="highlighter" title="Highlighter">Highlight</button>
+        <button data-tool="eraser" title="Eraser">Erase</button>
+        <button data-tool="text" title="Text">Text</button>
+        <button data-tool="move" title="Move">Move</button>
+        <button data-tool="laser" title="Laser pointer">Laser</button>
+      </div>
+      <div class="group" id="colors"></div>
+      <div class="group">
+        <button id="undo" title="Undo your last change">Undo</button>
+        <button id="redo" title="Redo">Redo</button>
+        <button id="add-page" title="Add a page after this one" hidden>+ Page</button>
+      </div>
+      <div class="group">
+        <button id="mic" class="toggle" aria-pressed="false" disabled>Mic</button>
+        <button id="camera" class="toggle" aria-pressed="false" disabled>Camera</button>
+        <button id="saver" class="toggle" aria-pressed="false" title="No video, voice only" disabled>Data saver</button>
+        <button id="hand" class="toggle" aria-pressed="false">Raise hand</button>
+      </div>
+    </footer>
+    <div id="audio" hidden></div>
+  </main>
+
+  <main id="ended" class="lobby" hidden>
+    <section class="lobby-card">
+      <p class="eyebrow">SpaceNotes Live</p>
+      <h1 id="ended-title">You left the room</h1>
+      <p id="ended-text" class="lede"></p>
+      <button id="download" class="primary wide" hidden>Download the notes</button>
+      <a class="button wide" href="/">Back to start</a>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/app/main.js"></script>
+</body>
+</html>

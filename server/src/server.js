@@ -13,6 +13,7 @@
 //   LIVE_DATA_DIR          or in this directory (default: memory only)
 //   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET   voice and video
 //   LIVE_PUBLIC_URL        base of join links (default: the request's host)
+//   FIREBASE_WEB_API_KEY, FIREBASE_AUTH_DOMAIN   for the web app's sign-in
 
 import http from "node:http";
 import { readFile } from "node:fs/promises";
@@ -32,7 +33,7 @@ const MAX_ASSET = 8 * 1024 * 1024;
 const HELLO_TIMEOUT_MS = 10_000;
 const MESSAGES_PER_SECOND = 120; // ink.live at 30 ms is ~33/s; this leaves room for pointers
 const WEB_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "web");
-const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json" };
+const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json" };
 
 export function createLiveServer({
   authenticate,
@@ -42,6 +43,8 @@ export function createLiveServer({
   log = (entry) => console.log(JSON.stringify(entry)),
   now = Date.now,
   roomsPerHour = 10,
+  // What the web app needs to sign in: { auth: "dev" } or { auth: "firebase", firebase: {...} }.
+  webConfig = { auth: "dev" },
 } = {}) {
   if (!authenticate) throw new Error("createLiveServer needs an authenticate function");
   const registry = new RoomRegistry({ store, log });
@@ -78,6 +81,7 @@ export function createLiveServer({
     if (req.method === "OPTIONS") return end(res, 204);
 
     if (req.method === "GET" && path === "/health") return end(res, 200, "ok", "text/plain");
+    if (req.method === "GET" && path === "/config.json") return sendJSON(res, 200, webConfig);
 
     if (req.method === "POST" && path === "/rooms") {
       const identity = await identify(req);
@@ -212,7 +216,7 @@ export function createLiveServer({
   async function serveWeb(path, res) {
     let file;
     if (path === "/" || path.startsWith("/join/")) file = "app/index.html";
-    else if (path.startsWith("/app/") || path.startsWith("/src/")) file = path.slice(1);
+    else if (path.startsWith("/app/") || path.startsWith("/src/") || path.startsWith("/vendor/")) file = path.slice(1);
     else throw new HttpError(404, "Not found.", "not-found");
     const full = normalize(join(WEB_ROOT, file));
     if (!full.startsWith(WEB_ROOT + "/")) throw new HttpError(404, "Not found.", "not-found");
@@ -296,7 +300,13 @@ function configFromEnv(env) {
   const liveKit = env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET
     ? { url: env.LIVEKIT_URL, apiKey: env.LIVEKIT_API_KEY, apiSecret: env.LIVEKIT_API_SECRET }
     : null;
-  return { authenticate, store, liveKit, publicUrl: env.LIVE_PUBLIC_URL || null };
+  const webConfig = env.LIVE_DEV_AUTH === "1"
+    ? { auth: "dev" }
+    : {
+      auth: "firebase",
+      firebase: { apiKey: env.FIREBASE_WEB_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN || `${env.FIREBASE_PROJECT_ID}.firebaseapp.com`, projectId: env.FIREBASE_PROJECT_ID },
+    };
+  return { authenticate, store, liveKit, publicUrl: env.LIVE_PUBLIC_URL || null, webConfig };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

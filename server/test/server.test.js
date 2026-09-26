@@ -381,6 +381,10 @@ test("the web client is served, including join links", async () => {
   const reducer = await api("GET", "/src/core/reducer.js");
   assert.equal(reducer.status, 200);
   assert.match(reducer.headers.get("content-type"), /javascript/);
+  const livekit = await api("GET", "/vendor/livekit-client/livekit-client.esm.mjs");
+  assert.equal(livekit.status, 200);
+  assert.match(livekit.headers.get("content-type"), /javascript/);
+  assert.deepEqual(await api("GET", "/config.json").then((r) => r.json), { auth: "dev" });
   assert.equal((await api("GET", "/src/../../server/src/auth.js")).status, 404);
   assert.equal((await api("GET", "/package.json")).status, 404);
 });
