@@ -86,10 +86,16 @@ fake cameras through it.
   ending; a real video call through a local LiveKit (video 640×360, audio,
   data saver, mute); the Kotlin and Swift room clients against the real server
   (live tests, skipped unless `LIVE_SERVER_URL` is set).
-- **Compiled but never run on a device:** the Compose screen and the Android
-  LiveKit provider.
-- **Never compiled here:** `LiveUI` and `SpaceNotesLiveVideo` (no Xcode on
-  Linux). The macOS CI job is their first compile; expect a round of fixes.
+- **Compiled in CI but never run on a device:** `LiveUI` (SwiftUI +
+  PencilKit) and `SpaceNotesLiveVideo` (Xcode on macOS; both compiled first
+  time), the Compose screen and the Android LiveKit provider (Gradle, lint
+  clean). CI (`.github/workflows/ci.yml`) was green on all four jobs at
+  commit 0b22734.
+- **Linux Swift quirks** (live tests only): Ubuntu's libcurl lacks
+  WebSockets, and even a WebSocket-enabled one drops outgoing messages over
+  ~16–48 KB, so the full-length-stroke live test is skipped on Linux; the
+  recipe is in `ios/README.md`. Apple's URLSession has not run the live
+  tests yet.
 - **Never tested:** real Apple Pencil or stylus input, a deployed server with
   real Firebase tokens, Cloud Run's 60-minute WebSocket cut-off.
 - **Not deployed.** `server/scripts/deploy-gcp.sh` (asia-south1, one
