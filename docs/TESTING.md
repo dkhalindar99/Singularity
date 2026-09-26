@@ -31,7 +31,9 @@ touch screens, and (with voice) real microphones and speakers.
    `ios/README.md`, "How to try it on your iPad". In the app, type the
    address from step 1 and your name.
 3. **Android:** install the demo app. The steps are in `android/README.md`,
-   "How to try it on your Android tablet". Type the same address.
+   "How to try it on your Android tablet". Every CI run also keeps a ready
+   APK: open the latest run under the repository's Actions tab and download
+   `SpaceNotesLiveDemo-debug-apk`. Type the same address.
 4. A browser on a phone also works for ink: open the same address. (Phone
    browsers only allow the microphone on secure https pages, so for voice on
    Level 2 use the demo apps or the Mac's own browser.)
@@ -47,8 +49,11 @@ connect, check that the Mac's firewall allows Node to accept connections
 1. Download `livekit-server` for macOS from LiveKit's GitHub releases page
    (github.com/livekit/livekit/releases, the `darwin_arm64` file for an
    Apple-silicon Mac) and unpack it.
-2. Run it: `./livekit-server --dev --bind 0.0.0.0`
-   (developer mode: its keys are `devkey` and `secret`).
+2. Run it with your Mac's Wi-Fi address (the one the room server prints):
+   `./livekit-server --dev --bind 0.0.0.0 --node-ip 192.168.1.23`
+   (developer mode: its keys are `devkey` and `secret`). Without
+   `--node-ip`, tablets are told to reach voice at their own address and
+   stay silent.
 3. Stop the room server (Ctrl-C) and start it again with voice:
    ```sh
    LIVEKIT_URL=ws://192.168.1.23:7880 LIVEKIT_API_KEY=devkey \
