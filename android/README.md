@@ -54,19 +54,24 @@ What `live-core`'s tests cover:
   every 30 ms, rounded to 0.1, `done` then `stroke.add` with the same id;
   pointer throttling; view and hand resent after a reconnect; remote
   previews growing, swapped for the committed stroke, cleared when their
-  stroke never comes or their sender leaves; oversized ops refused locally;
+  stroke never comes or their sender leaves; an op over ~1,000 KiB dropped
+  locally as a `too-large` reject (never pending, never an undo step), while
+  a full 5,000-point stroke still fits one frame;
 - `LiveApi` against a local HTTP server (create, lookup and its 404, video
   ticket and its 503, asset upload and download, snapshot, errors);
 - `LiveServerTest`: a host and a guest, both real `RoomClient`s over OkHttp
   WebSockets, against the real room server in `../server` (skipped unless
-  `SPACENOTES_LIVE_SERVER` is set). Create and look up a room, starting ink,
-  live ink then the committed stroke, undo and redo reaching the other
-  person, a locked page rolling back the guest's stroke, raised hand, laser,
-  snapshot, remove (and the refused rejoin), end:
+  `LIVE_SERVER_URL` is set). Create and look up a room, starting ink, live
+  ink then the committed stroke, undo and redo reaching the other person,
+  reconnecting delivering a pending op exactly once (both when the server
+  had already numbered it and its echo was lost — answered `duplicate` —
+  and when it was drawn while the line was down), a locked page rolling
+  back the guest's stroke, raised hand, laser, snapshot, remove (and the
+  refused rejoin), end:
 
   ```sh
-  (cd ../server && LIVE_DEV_AUTH=1 PORT=18931 node src/server.js) &
-  SPACENOTES_LIVE_SERVER=http://127.0.0.1:18931 ./gradlew :live-core:test
+  (cd ../server && LIVE_DEV_AUTH=1 PORT=8792 node src/server.js) &
+  LIVE_SERVER_URL=http://127.0.0.1:8792 ./gradlew :live-core:test
   ```
 
 ## Embedding in the notebook app
@@ -115,10 +120,11 @@ the clock so ops after an app relaunch are never mistaken for resends.
 Built and tested on Linux with JDK 21, Gradle 9.6.0 and Android SDK platform
 37.0 / build-tools 37.0.0 installed from Google's command-line tools:
 
-- `./gradlew :live-core:test` — 53 tests pass, including `LiveServerTest`
-  against `../server` run locally with dev tokens (run eight times in a row
-  without a failure; it found, and now guards, a race where `Connected` was
-  published a moment before the welcome's state).
+- `./gradlew :live-core:test` — 55 tests; all pass. `LiveServerTest` (one
+  of them) is skipped without `LIVE_SERVER_URL`; it was run against
+  `../server` started locally with dev tokens, ten times in a row without a
+  failure. It found, and now guards, a race where `Connected` was
+  published a moment before the welcome's state.
 - `./gradlew :live-ui:testDebugUnitTest` — passes (room codes, colours).
 - `./gradlew :live-ui:assembleDebug :live-video:assembleDebug` — both AARs
   build with no compiler warnings; `lintDebug` reports no issues in either.

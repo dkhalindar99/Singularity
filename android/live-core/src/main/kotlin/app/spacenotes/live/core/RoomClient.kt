@@ -545,10 +545,11 @@ public class RoomClient(
         if (ended) return null
         val clientOpId = "$deviceId:${opCounter++}"
         val frame = ClientMessage.OpRequest(clientOpId, op).encode()
-        if (frame.toByteArray(Charsets.UTF_8).size > MAX_FRAME_BYTES) {
-            // The server would refuse the frame and close; resending it after
-            // every reconnect would never end. Refuse it here instead.
-            _events.tryEmit(RoomEvent.Rejected(clientOpId, ErrorCode.TOO_LARGE))
+        if (frame.toByteArray(Charsets.UTF_8).size > MAX_OP_FRAME_BYTES) {
+            // The server would close the socket over it, and every resend
+            // after a reconnect would close it again. Dropped here instead:
+            // never pending, never an undo step, reported as a reject.
+            _events.tryEmit(RoomEvent.Rejected(clientOpId, RejectReason.TOO_LARGE))
             return null
         }
         pending += Pending(clientOpId, op)
@@ -681,7 +682,11 @@ public class RoomClient(
 
         /** Live ink and pointers go out at most this often. */
         public const val PRESENCE_INTERVAL_MS: Long = 30
-        public const val MAX_FRAME_BYTES: Int = 256 * 1024
+        /**
+         * The largest op frame this client sends: a little under the server's
+         * 1 MiB, which a full 5,000-point stroke always fits in.
+         */
+        public const val MAX_OP_FRAME_BYTES: Int = 1000 * 1024
         internal const val DONE_INK_GRACE_MS: Long = 1500
         private const val MAX_HISTORY = 200
 

@@ -46,6 +46,10 @@ room server only issues the LiveKit ticket (see "HTTP API").
 - `clientOpId` — `"<deviceId>:<counter>"`, unique per device. The server
   remembers the `clientOpId`s it has sequenced in a room and never sequences
   the same one twice, so a client may safely resend after a reconnect.
+  Because `deviceId` is kept across app launches, the counter must never
+  repeat either: a client starts it from the clock in milliseconds when it
+  is created, and adds one per op. A counter that restarted at 1 would have a
+  relaunched app's first ops answered `duplicate` and silently lost.
 
 ## Data types
 
@@ -229,7 +233,7 @@ Presence kinds:
 
 | kind | fields | meaning |
 |---|---|---|
-| `ink.live` | `pageId`, `liveId`, `ink`, `color`, `width`, `p` (flat `[x,y,w, x,y,w, …]`), `done` (bool) | Points of a stroke still being drawn, sent at most every 30 ms. `p` holds only the points since the last message. `done: true` ends it; the committed `stroke.add` follows. `liveId` is the stroke's future `id`, so a receiver swaps the preview for the stroke without a flicker. |
+| `ink.live` | `pageId`, `liveId`, `ink`, `color`, `width`, `p` (flat `[x,y,w, x,y,w, …]`), `done` (bool) | Points of a stroke still being drawn, sent at most every 30 ms. `p` holds only the points since the last message. `done: true` ends it; the committed `stroke.add` follows. `liveId` is the stroke's future `id`, so a receiver swaps the preview for the stroke without a flicker. A finished preview whose stroke has not arrived within 1.5 s (it was rejected) is dropped. |
 | `pointer` | `pageId`, `x`, `y`, `laser` (bool) | Where the person's pen or finger is. `laser: true` draws a fading laser dot. |
 | `pointer.hide` | — | Pointer left the page. |
 | `view` | `pageId` | The page this person is looking at. |
@@ -306,6 +310,10 @@ pending; nothing is rolled back.
 ```
 
 `error` — `{ "type": "error", "code": "…", "message": "…" }`, then close.
+A client ends the session (no reconnect) on `bad-hello`, `no-such-room`,
+`room-full`, `guests-not-allowed` and `protocol-mismatch`; on any other code
+(`rate-limited`, `unauthenticated` — a token that expired — `too-large`, or
+one it does not know) it reconnects with the usual backoff.
 Codes: `bad-hello`, `unauthenticated`, `no-such-room`, `room-full`,
 `guests-not-allowed`, `protocol-mismatch`, `too-large`, `rate-limited`.
 A person the host removed who tries to join again gets `removed` with
@@ -356,7 +364,7 @@ Every route except `GET /health` needs `Authorization: Bearer <Firebase ID token
 | `PUT /rooms/{roomId}/assets/{assetId}` | host | Body: PNG or JPEG, at most 8 MiB. |
 | `GET /rooms/{roomId}/assets/{assetId}` | member | The picture. |
 | `POST /rooms/{roomId}/video-token` | member | `{ url, token }` for LiveKit, or 503 `video-unavailable` when the server has no LiveKit keys; clients then carry on with ink only. |
-| `GET /rooms/{roomId}/snapshot` | host | The current room state, for saving back into the notebook. |
+| `GET /rooms/{roomId}/snapshot` | host | `{ room, ended, state }`: the room details, whether it has ended, and the current room state, for saving back into the notebook. |
 | `GET /health` | anyone | `ok`. |
 
 Room codes are six characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no

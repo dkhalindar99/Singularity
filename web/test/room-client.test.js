@@ -254,3 +254,43 @@ test("an op too large for one frame is refused locally, never sent", async () =>
   assert.equal(asha.status, "connected");
   asha.disconnect();
 });
+
+test("op ids never repeat across a reload of the same device", async () => {
+  const { roomId } = await room();
+  const first = client(roomId, "asha", "Asha");
+  first.connect();
+  await until(first, () => first.status === "connected");
+  first.addStroke(PAGE1, stroke("one"));
+  await until(first, () => first.pending.length === 0);
+  first.disconnect();
+  await new Promise((r) => setTimeout(r, 5));
+  const reloaded = client(roomId, "asha", "Asha"); // same deviceId, as after a page reload
+  reloaded.connect();
+  await until(reloaded, () => reloaded.status === "connected");
+  reloaded.addStroke(PAGE1, stroke("two"));
+  await until(reloaded, () => reloaded.pending.length === 0);
+  assert.deepEqual(visible(reloaded), ["one", "two"]);
+  reloaded.disconnect();
+});
+
+test("a stroke the server refuses stops being previewed for others", async () => {
+  const { roomId } = await room();
+  const host = client(roomId, "host", "Host");
+  const ravi = client(roomId, "ravi", "Ravi");
+  host.connect();
+  ravi.connect();
+  await until(host, () => host.status === "connected" && host.members.length === 2);
+  await until(ravi, () => ravi.status === "connected");
+  host.setPolicy("pen", "ravi");
+  await until(ravi, () => ravi.canDraw);
+  const streamer = new LiveInkStreamer(ravi, { intervalMs: 5 });
+  streamer.begin({ pageId: PAGE1, liveId: "never", ink: "pen", color: { r: 0, g: 0, b: 0, a: 1 }, width: 2 });
+  streamer.add(1, 1, 2);
+  await until(host, () => host.live.size === 1);
+  streamer.end(); // and no stroke.add follows
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(host.live.size, 1, "kept while the stroke may still arrive");
+  await until(host, () => host.live.size === 0, 3000);
+  host.disconnect();
+  ravi.disconnect();
+});

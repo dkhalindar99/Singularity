@@ -25,13 +25,13 @@ import org.junit.Test
 
 /**
  * Two real clients against a real room server, over real sockets. Skipped
- * unless SPACENOTES_LIVE_SERVER names a server started with dev tokens:
+ * unless LIVE_SERVER_URL names a server started with dev tokens:
  *
- *     (cd server && LIVE_DEV_AUTH=1 PORT=18931 node src/server.js)
- *     SPACENOTES_LIVE_SERVER=http://127.0.0.1:18931 ./gradlew :live-core:test
+ *     (cd server && LIVE_DEV_AUTH=1 PORT=8792 node src/server.js)
+ *     LIVE_SERVER_URL=http://127.0.0.1:8792 ./gradlew :live-core:test
  */
 class LiveServerTest {
-    private val server: String? = System.getenv("SPACENOTES_LIVE_SERVER")
+    private val server: String? = System.getenv("LIVE_SERVER_URL")?.takeIf { it.isNotBlank() }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val http = OkHttpClient.Builder()
         .proxy(Proxy.NO_PROXY)
@@ -49,9 +49,36 @@ class LiveServerTest {
             throw AssertionError("timed out waiting for $what; last value $value", e)
         }
 
-    private fun client(roomId: String, uid: String, name: String) = RoomClient(
-        server!!, roomId, name, "$uid-device", { "dev:$uid:$name" }, OkHttpTransportFactory(http), scope,
+    /** The real transport, with a switch to lose incoming ops and a way to cut the line. */
+    private inner class Line : LiveTransportFactory {
+        private val real = OkHttpTransportFactory(http)
+
+        @Volatile var loseOps = false
+
+        @Volatile private var current: LiveTransport? = null
+
+        override fun open(url: String, listener: LiveTransportListener): LiveTransport {
+            val filtered = object : LiveTransportListener {
+                override fun onMessage(text: String) {
+                    if (loseOps && ServerMessage.decode(text) is ServerMessage.OpFrame) return
+                    listener.onMessage(text)
+                }
+
+                override fun onClosed(code: Int, reason: String) = listener.onClosed(code, reason)
+            }
+            return real.open(url, filtered).also { current = it }
+        }
+
+        fun cut() {
+            current?.close(1000, "test cut the line")
+        }
+    }
+
+    private fun client(roomId: String, uid: String, name: String, line: LiveTransportFactory = Line()) = RoomClient(
+        server!!, roomId, name, "$uid-device", { "dev:$uid:$name" }, line, scope,
     )
+
+    private fun RoomState.count(strokeId: String) = pages.sumOf { page -> page.strokes.count { it.stroke.id == strokeId } }
 
     private fun stroke(id: String) = LiveStroke(
         id, "pen", LiveColor(0.1, 0.2, 0.3), 2.0, "2026-09-26T10:00:00Z",
@@ -60,7 +87,7 @@ class LiveServerTest {
 
     @Test
     fun twoPeopleShareOneNotebook() = runBlocking {
-        assumeTrue("SPACENOTES_LIVE_SERVER not set", server != null)
+        assumeTrue("LIVE_SERVER_URL not set", server != null)
         val hostUid = "host-$run"
         val guestUid = "asha-$run"
         val api = LiveApi(server!!, { "dev:$hostUid:Host" }, http)
@@ -68,7 +95,8 @@ class LiveServerTest {
         assertEquals(created.roomId, LiveApi(server, { "dev:$guestUid:Asha" }, http).lookup(created.code)?.roomId)
 
         val host = client(created.roomId, hostUid, "Host")
-        val guest = client(created.roomId, guestUid, "Asha")
+        val guestLine = Line()
+        val guest = client(created.roomId, guestUid, "Asha", guestLine)
         host.connect()
         host.status.await("host connected") { it == RoomStatus.Connected }
         guest.connect()
@@ -93,6 +121,32 @@ class LiveServerTest {
         guest.confirmed.await("erased by undo") { s -> s.pages[0].strokes.single { it.stroke.id == streamer.id }.erased }
         assertTrue(host.redo())
         guest.confirmed.await("restored by redo") { s -> !s.pages[0].strokes.single { it.stroke.id == streamer.id }.erased }
+
+        // Reconnecting delivers a pending op exactly once. First the case the
+        // server already numbered: its echo is lost, the line drops, the op is
+        // resent after the welcome and answered `duplicate`.
+        val settled = host.state.await("host settled") { it == host.confirmed.value && it.seq == guest.confirmed.value.seq }
+        val seqBefore = settled.seq
+        guestLine.loseOps = true
+        guest.addStroke("P1", stroke("ECHO-LOST-$run"))
+        host.confirmed.await("server numbered it") { it.count("ECHO-LOST-$run") == 1 }
+        guestLine.cut()
+        guest.status.await("guest dropped") { it != RoomStatus.Connected }
+        guestLine.loseOps = false
+        guest.status.await("guest back") { it == RoomStatus.Connected }
+        guest.state.await("guest settled") { it == guest.confirmed.value && it.count("ECHO-LOST-$run") == 1 }
+        // Then an op drawn while the line is down: queued, sent once on return.
+        guestLine.cut()
+        guest.status.await("guest dropped again") { it != RoomStatus.Connected }
+        guest.addStroke("P1", stroke("OFFLINE-$run"))
+        guest.status.await("guest back again") { it == RoomStatus.Connected }
+        host.confirmed.await("offline stroke arrives") { it.count("OFFLINE-$run") == 1 }
+        guest.state.await("guest settled again") { it == guest.confirmed.value && it.count("OFFLINE-$run") == 1 }
+        delay(300) // time for a stray second copy to show up, if there were one
+        assertEquals(seqBefore + 2, host.confirmed.value.seq)
+        assertEquals(1, host.confirmed.value.count("ECHO-LOST-$run"))
+        assertEquals(1, host.confirmed.value.count("OFFLINE-$run"))
+        assertEquals(host.confirmed.value, guest.confirmed.value)
 
         // The host locks drawing; the guest's optimistic stroke is rolled back.
         val rejections = java.util.Collections.synchronizedList(mutableListOf<RoomEvent>())

@@ -340,6 +340,7 @@ private class PageGesture(
                 val point = LivePoint(x, y, pressure.toDouble(), (uptime - startUptime) / 1000.0, width)
                 streamer.add(point)
                 localPoints += point
+                if (streamer.isFull) continueStroke(streamer, point, uptime)
             }
             LiveTool.Eraser -> {
                 val current = client.state.value.page(page.id) ?: return
@@ -352,6 +353,21 @@ private class PageGesture(
             LiveTool.Laser -> client.sendPointer(page.id, x, y, laser = true)
             else -> Unit
         }
+    }
+
+    /**
+     * A stroke may hold 5,000 points (PROTOCOL.md). A longer one is committed
+     * and carries on as a new stroke from the same point, so the line has no gap.
+     */
+    private fun continueStroke(full: LiveInkStreamer, last: LivePoint, uptime: Long) {
+        full.finish()
+        val next = client.beginStroke(full.pageId, full.ink, full.color, full.width)
+        startUptime = uptime
+        val first = last.copy(timeOffset = 0.0)
+        next.add(first)
+        streamer = next
+        localPoints.clear()
+        localPoints += first
     }
 
     fun end() {

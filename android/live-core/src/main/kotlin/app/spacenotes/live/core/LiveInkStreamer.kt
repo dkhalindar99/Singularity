@@ -32,13 +32,18 @@ public class LiveInkStreamer internal constructor(
     private var flushJob: Job? = null
     private var closed = false
 
+    /** How many points the stroke has; at [Permissions.MAX_STROKE_POINTS] it is full. */
+    public val pointCount: Int get() = client.locked { points.size }
+
+    public val isFull: Boolean get() = pointCount >= Permissions.MAX_STROKE_POINTS
+
     /** Every point so far, for drawing this person's own stroke locally. */
     public val drawnPoints: List<LivePoint> get() = client.locked { points.toList() }
 
     public fun add(point: LivePoint) {
         client.locked {
-            // The server refuses strokes over 5,000 points; past that the pen
-            // simply stops adding to this stroke.
+            // The server refuses strokes over 5,000 points. The canvas starts
+            // a new stroke before this; anything past it is dropped here.
             if (closed || points.size >= Permissions.MAX_STROKE_POINTS) return@locked
             points += point
             unsent += RoomClient.round1(point.x)

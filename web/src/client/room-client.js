@@ -16,6 +16,8 @@ import { canDraw } from "../core/permissions.js";
 const BACKOFF_MS = [500, 1000, 2000, 4000, 8000];
 const PING_MS = 20_000;
 const POINTER_TTL_MS = 5000;
+const DONE_PREVIEW_TTL_MS = 1500;
+const FATAL_ERRORS = new Set(["bad-hello", "no-such-room", "room-full", "guests-not-allowed", "protocol-mismatch"]);
 const MAX_OP_BYTES = 1000 * 1024; // under the server's 1 MiB frame, leaving room for the envelope
 
 export class RoomClient extends EventTarget {
@@ -52,7 +54,9 @@ export class RoomClient extends EventTarget {
     this.live = new Map(); // `${connectionId}/${liveId}` -> preview
     this.pointers = new Map(); // connectionId -> { pageId, x, y, laser, at }
     this.views = new Map(); // connectionId -> pageId
-    this.counter = 0;
+    // Never restarts, even across page reloads with the same deviceId
+    // (PROTOCOL.md, Identifiers): a repeated clientOpId would be dropped.
+    this.counter = Date.now();
     this.socket = null;
     this.attempt = 0;
     this.retryTimer = null;
@@ -207,7 +211,10 @@ export class RoomClient extends EventTarget {
       case "removed":
         return this.#end(message.reason || "removed-by-host");
       case "error":
-        return this.#end(message.code || "error");
+        if (FATAL_ERRORS.has(message.code)) return this.#end(message.code);
+        // An expired token, a rate limit: the server closes the socket and
+        // the close handler reconnects with growing backoff.
+        return;
       default:
         return; // pong and anything newer than this client
     }
@@ -225,6 +232,13 @@ export class RoomClient extends EventTarget {
           if (preview) {
             appendPoints(preview, presence.p);
             preview.done = true;
+            // If the stroke never comes (the server refused it), stop drawing it.
+            this.timers.setTimeout(() => {
+              if (this.live.get(key) === preview) {
+                this.live.delete(key);
+                this.#emit("presence");
+              }
+            }, DONE_PREVIEW_TTL_MS);
           }
           break;
         }

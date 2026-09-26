@@ -143,6 +143,9 @@ public object RejectReason {
 
     /** Already sequenced before this connection; the welcome state holds it. */
     public const val DUPLICATE: String = "duplicate"
+
+    /** Never sent by the server: a client's own refusal of an op over the frame limit. */
+    public const val TOO_LARGE: String = "too-large"
 }
 
 /** Error codes (protocol/PROTOCOL.md, error). */

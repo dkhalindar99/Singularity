@@ -167,7 +167,9 @@ export function createLiveServer({
     let room = null;
     let member = null;
     let helloSeen = false;
-    const limiter = new RateLimiter({ capacity: MESSAGES_PER_SECOND * 2, refillPerSecond: MESSAGES_PER_SECOND, now });
+    // A large burst is allowed because a device coming back online resends
+    // every op it drew while away, all at once.
+    const limiter = new RateLimiter({ capacity: 2000, refillPerSecond: MESSAGES_PER_SECOND, now });
     const fail = (code, message) => {
       connection.send({ type: "error", code, message });
       connection.close(4002, code);

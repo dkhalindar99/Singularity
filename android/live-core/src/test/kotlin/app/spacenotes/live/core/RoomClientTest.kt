@@ -609,13 +609,48 @@ class RoomClientTest {
     }
 
     @Test
-    fun tooLargeOpsAreRefusedLocally() = runTest {
+    fun tooLargeOpsAreDroppedLocallyAsRejects() = runTest {
         val network = FakeNetwork()
         val client = joined(network)
-        val huge = LiveText("T", "x".repeat(RoomClient.MAX_FRAME_BYTES), LiveRect(0.0, 0.0, 1.0, 1.0), 12.0, LiveColor(0.0, 0.0, 0.0))
+        val events = mutableListOf<RoomEvent>()
+        backgroundScope.launch { client.events.toList(events) }
+        runCurrent()
+
+        val huge = LiveText("T", "x".repeat(RoomClient.MAX_OP_FRAME_BYTES), LiveRect(0.0, 0.0, 1.0, 1.0), 12.0, LiveColor(0.0, 0.0, 0.0))
         assertNull(client.upsertText(page1, huge))
+        runCurrent()
         assertTrue(network.last.ops().isEmpty())
         assertTrue(client.state.value.pages[0].texts.isEmpty())
+        assertFalse("not an undo step", client.canUndo.value)
+        assertEquals(listOf<RoomEvent>(RoomEvent.Rejected("dev:1", RejectReason.TOO_LARGE)), events)
+
+        // Nothing is left to resend after a reconnect.
+        network.last.drop()
+        advanceTimeBy(500); runCurrent()
+        network.last.receive(welcome())
+        assertTrue(network.last.ops().isEmpty())
+    }
+
+    @Test
+    fun aFullFiveThousandPointStrokeStillFitsInOneFrame() = runTest {
+        val network = FakeNetwork()
+        val client = joined(network)
+        val points = (0 until Permissions.MAX_STROKE_POINTS).map {
+            LivePoint(123.456789 + it, 654.321987 + it, 0.987654321, it * 0.008333333, 2.345678901, 0.785398163, 1.047197551)
+        }
+        val full = LiveStroke("S", "fountainPen", LiveColor(0.123456789, 0.23456789, 0.3456789, 1.0), 2.345678901, "2026-01-02T03:04:05Z", points, 1767322445.123456)
+        assertEquals("dev:1", client.addStroke(page1, full))
+        assertEquals(1, network.last.ops().size)
+    }
+
+    @Test
+    fun theStreamerStopsAtTheStrokeLimit() = runTest {
+        val network = FakeNetwork()
+        val client = joined(network)
+        val streamer = client.beginStroke(page1, "pen", LiveColor(0.0, 0.0, 0.0), 2.0, id = "S")
+        repeat(Permissions.MAX_STROKE_POINTS + 10) { streamer.add(LivePoint(it.toDouble(), 0.0, 1.0, 0.0, 2.0)) }
+        assertTrue(streamer.isFull)
+        assertEquals(Permissions.MAX_STROKE_POINTS, streamer.finish()!!.points.size)
     }
 
     @Test
