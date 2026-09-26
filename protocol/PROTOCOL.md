@@ -31,7 +31,10 @@ room server only issues the LiveKit ticket (see "HTTP API").
   verbatim, unknown fields included; a client may drop fields it does not know.
 - Maximum frame the server accepts: 1 MiB. Maximum stroke: 5,000 points (at
   about 150 bytes a point in JSON, a full stroke is roughly 750 KB, so it
-  always fits in one frame; clients never split a stroke).
+  always fits in one frame; clients never split a stroke). A client never
+  sends a frame over the limit: the server would close the connection, and
+  resending after reconnecting would close it again. It drops such an op
+  locally instead, as if rejected with reason `too-large`.
 
 ## Identifiers
 

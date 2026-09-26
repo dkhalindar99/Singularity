@@ -13,6 +13,7 @@ import { drawBackground, drawPoints, drawPointer, drawStroke, drawText, distance
 const POINTER_EVERY_MS = 50;
 const LASER_FADE_MS = 700;
 const ERASER_RADIUS = 8;
+const MAX_POINTS = 5000;
 
 export const TOOLS = {
   pen: { ink: "pen", width: 2.4 },
@@ -339,6 +340,19 @@ export class CanvasView {
     if (isPen && typeof event.azimuthAngle === "number") point.azimuth = round2(event.azimuthAngle);
     local.points.push(point);
     this.streamer.add(point.x, point.y, point.width);
+    if (local.points.length >= MAX_POINTS) this.#continueStroke();
+  }
+
+  /** A stroke may hold 5,000 points (PROTOCOL.md); a longer one carries on as a new stroke. */
+  #continueStroke() {
+    const page = this.page;
+    const done = this.local;
+    this.streamer.end();
+    this.client.addStroke(page.id, this.#finishStroke(done));
+    const last = done.points[done.points.length - 1];
+    this.local = { ...done, id: crypto.randomUUID().toUpperCase(), startedAt: performance.now(), points: [{ ...last, timeOffset: 0 }] };
+    this.streamer.begin({ pageId: page.id, liveId: this.local.id, ink: done.ink, color: done.color, width: done.width });
+    this.streamer.add(last.x, last.y, last.width);
   }
 
   #finishStroke(local) {

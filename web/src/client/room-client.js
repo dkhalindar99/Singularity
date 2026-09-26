@@ -16,6 +16,7 @@ import { canDraw } from "../core/permissions.js";
 const BACKOFF_MS = [500, 1000, 2000, 4000, 8000];
 const PING_MS = 20_000;
 const POINTER_TTL_MS = 5000;
+const MAX_OP_BYTES = 1000 * 1024; // under the server's 1 MiB frame, leaving room for the envelope
 
 export class RoomClient extends EventTarget {
   /**
@@ -297,6 +298,12 @@ export class RoomClient extends EventTarget {
   /** Queues an op, draws it at once, and sends it if connected. */
   #submit(op, { step = null, untracked = false } = {}) {
     const clientOpId = this.#nextId();
+    if (JSON.stringify(op).length > MAX_OP_BYTES) {
+      // The server would close the socket, and a resend after reconnecting
+      // would close it again, for ever. Refuse it here instead.
+      this.#emit("reject", { clientOpId, reason: "too-large" });
+      return null;
+    }
     this.pending.push({ clientOpId, op });
     if (step) this.stepFor.set(clientOpId, step);
     if (untracked) this.untracked.add(clientOpId);
@@ -308,10 +315,10 @@ export class RoomClient extends EventTarget {
   /** An undoable op: records how to undo and redo it, from the state before it. */
   #submitUndoable(op, undo, redo) {
     const step = { undo, redo };
+    if (this.#submit(op, { step }) === null) return;
     this.undoStack.push(step);
     if (this.undoStack.length > 200) this.undoStack.shift();
     this.redoStack = [];
-    this.#submit(op, { step });
     this.#emit("history");
   }
 

@@ -236,3 +236,21 @@ test("the API: lookup by code, video unavailable without keys", async () => {
   assert.equal(await api.lookup("ZZZZZ9"), null);
   assert.equal(await api.videoToken(roomId), null);
 });
+
+test("an op too large for one frame is refused locally, never sent", async () => {
+  const { roomId } = await room();
+  const asha = client(roomId, "asha", "Asha");
+  asha.connect();
+  await until(asha, () => asha.status === "connected");
+  const huge = stroke("huge");
+  huge.points = Array.from({ length: 4000 }, (_, i) => ({ x: i, y: i, pressure: 1, timeOffset: i, width: 2, padding: "x".repeat(300) }));
+  const rejected = new Promise((r) => asha.addEventListener("reject", (e) => r(e.detail), { once: true }));
+  asha.addStroke(PAGE1, huge);
+  assert.equal((await rejected).reason, "too-large");
+  assert.equal(asha.pending.length, 0);
+  assert.equal(asha.canUndo, false);
+  asha.addStroke(PAGE1, stroke("small"));
+  await until(asha, () => asha.pending.length === 0 && asha.confirmed.seq === 1);
+  assert.equal(asha.status, "connected");
+  asha.disconnect();
+});

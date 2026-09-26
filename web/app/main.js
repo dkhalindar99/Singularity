@@ -24,6 +24,7 @@ const REJECT_TEXT = {
   "drawing-locked": "The host has paused writing for now.",
   "not-host": "Only the host can do that.",
   "invalid-op": "That change could not be saved.",
+  "too-large": "That is too much to share at once.",
 };
 const ENDED_TEXT = {
   "left": ["You left the room", "The notes stay with the host."],
