@@ -6,36 +6,23 @@ import LiveKit
 import LiveUI
 import SwiftUI
 
-/// Camera and voice for SpaceNotes Live, on LiveKit.
+/// Voice for SpaceNotes Live, on LiveKit.
 ///
-/// Joins with the microphone on and the camera off. Video is small on
-/// purpose: the page is the point of the room, and the tiles are 132 points
-/// wide, so the camera captures 360p and publishes simulcast layers of 180p
-/// and 360p; adaptive stream and dynacast mean each viewer receives only the
-/// layer its tile needs, and nobody pays for layers nobody watches.
+/// Ink and voice only: nothing here ever publishes a camera, and the server's
+/// token only allows the microphone, so LiveKit would refuse one anyway. A
+/// person joins with the microphone on and can mute.
 ///
 /// People are matched to tiles by LiveKit participant identity, which the
 /// room server sets to the person's Firebase uid when it issues the ticket.
 @MainActor
-public final class LiveKitVideoProvider: LiveVideoProviding {
+public final class LiveKitVoiceProvider: LiveVoiceProviding {
     public var onChange: (() -> Void)?
     public let room: Room
     private let observer: RoomObserver
 
     public init() {
-        let publish = VideoPublishOptions(
-            encoding: VideoParameters.presetH360_169.encoding,
-            simulcast: true,
-            simulcastLayers: [VideoParameters.presetH180_169, VideoParameters.presetH360_169]
-        )
-        let options = RoomOptions(
-            defaultCameraCaptureOptions: CameraCaptureOptions(position: .front, dimensions: .h360_169, fps: 20),
-            defaultVideoPublishOptions: publish,
-            adaptiveStream: true,
-            dynacast: true
-        )
         observer = RoomObserver()
-        room = Room(delegate: observer, roomOptions: options)
+        room = Room(delegate: observer)
         observer.changed = { [weak self] in
             Task { @MainActor in self?.onChange?() }
         }
@@ -43,7 +30,6 @@ public final class LiveKitVideoProvider: LiveVideoProviding {
 
     public var isConnected: Bool { room.connectionState == .connected || room.connectionState == .reconnecting }
     public var isMicrophoneEnabled: Bool { room.localParticipant.isMicrophoneEnabled() }
-    public var isCameraEnabled: Bool { room.localParticipant.isCameraEnabled() }
 
     public func connect(url: String, token: String) async throws {
         try await room.connect(url: url, token: token)
@@ -61,16 +47,6 @@ public final class LiveKitVideoProvider: LiveVideoProviding {
     public func setMicrophoneEnabled(_ enabled: Bool) async throws {
         try await room.localParticipant.setMicrophone(enabled: enabled)
         onChange?()
-    }
-
-    public func setCameraEnabled(_ enabled: Bool) async throws {
-        try await room.localParticipant.setCamera(enabled: enabled)
-        onChange?()
-    }
-
-    public func videoView(uid: String) -> AnyView? {
-        guard let track = participant(uid: uid)?.firstCameraVideoTrack else { return nil }
-        return AnyView(SwiftUIVideoView(track, layoutMode: .fill))
     }
 
     public func isMicrophoneOn(uid: String) -> Bool? {

@@ -5,12 +5,12 @@ import PackageDescription
 
 // Kept apart from SpaceNotesLive so LiveCore's tests never resolve LiveKit.
 let package = Package(
-    name: "SpaceNotesLiveVideo",
+    name: "SpaceNotesLiveVoice",
     platforms: [
         .iOS(.v17),
     ],
     products: [
-        .library(name: "LiveVideo", targets: ["LiveVideo"]),
+        .library(name: "LiveVoice", targets: ["LiveVoice"]),
     ],
     dependencies: [
         .package(path: "../SpaceNotesLive"),
@@ -19,7 +19,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "LiveVideo",
+            name: "LiveVoice",
             dependencies: [
                 .product(name: "LiveUI", package: "SpaceNotesLive"),
                 .product(name: "LiveKit", package: "client-sdk-swift"),

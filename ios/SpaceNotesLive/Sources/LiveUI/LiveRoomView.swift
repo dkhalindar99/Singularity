@@ -10,12 +10,12 @@ import SwiftUI
 public struct LiveRoomView: View {
     @ObservedObject private var client: RoomClient
     private let api: LiveAPI
-    private let video: LiveVideoProviding?
+    private let voice: LiveVoiceProviding?
     private let onFinish: (LiveSessionResult) -> Void
 
     @StateObject private var tools = LiveToolState(color: LiveTheme.standard.inkPalette[0])
     @StateObject private var assets: LiveAssetCache
-    @StateObject private var videoObserver: LiveVideoObserver
+    @StateObject private var voiceObserver: LiveVoiceObserver
     @State private var currentPageId: String?
     @State private var followHost = true
     @State private var showingParticipants = false
@@ -26,23 +26,23 @@ public struct LiveRoomView: View {
 
     /// - Parameters:
     ///   - client: a client for the room; the view connects it.
-    ///   - video: camera and voice, or nil for ink only.
+    ///   - voice: voice for the room, or nil for ink only.
     ///   - onFinish: called once, when the person leaves or the room ends,
     ///     with the notebook as it was so the host app can save it.
-    public init(client: RoomClient, api: LiveAPI, video: LiveVideoProviding?,
+    public init(client: RoomClient, api: LiveAPI, voice: LiveVoiceProviding?,
                 onFinish: @escaping (LiveSessionResult) -> Void) {
         _client = ObservedObject(wrappedValue: client)
         self.api = api
-        self.video = video
+        self.voice = voice
         self.onFinish = onFinish
         _assets = StateObject(wrappedValue: LiveAssetCache(api: api, roomId: client.roomId))
-        _videoObserver = StateObject(wrappedValue: LiveVideoObserver(provider: video))
+        _voiceObserver = StateObject(wrappedValue: LiveVoiceObserver(provider: voice))
     }
 
     public var body: some View {
         VStack(spacing: 0) {
             topBar
-            LiveParticipantStrip(members: client.members, me: client.me, video: videoObserver)
+            LiveParticipantStrip(members: client.members, me: client.me, voice: voiceObserver)
             ZStack(alignment: .top) {
                 theme.background
                 if let page = currentPage {
@@ -74,7 +74,7 @@ public struct LiveRoomView: View {
         .overlay { endedOverlay }
         .task {
             client.connect()
-            await connectVideo()
+            await connectVoice()
         }
         .onChange(of: client.status) { _, status in
             if status == .connected, currentPageId == nil {
@@ -124,16 +124,11 @@ public struct LiveRoomView: View {
                 }
             }
             Spacer()
-            if let provider = videoObserver.provider, provider.isConnected {
+            if let provider = voiceObserver.provider, provider.isConnected {
                 barButton(provider.isMicrophoneEnabled ? "mic.fill" : "mic.slash.fill",
                           label: provider.isMicrophoneEnabled ? "Mute" : "Unmute",
                           tint: provider.isMicrophoneEnabled ? theme.primaryText : theme.danger) {
                     Task { try? await provider.setMicrophoneEnabled(!provider.isMicrophoneEnabled) }
-                }
-                barButton(provider.isCameraEnabled ? "video.fill" : "video.slash.fill",
-                          label: provider.isCameraEnabled ? "Turn camera off" : "Turn camera on",
-                          tint: theme.primaryText) {
-                    Task { try? await provider.setCameraEnabled(!provider.isCameraEnabled) }
                 }
             }
             barButton(client.handRaised ? "hand.raised.fill" : "hand.raised",
@@ -324,10 +319,10 @@ public struct LiveRoomView: View {
         if byHand, !client.isHost, pageId != client.state.hostPageId { followHost = false }
     }
 
-    private func connectVideo() async {
-        guard let video, !video.isConnected else { return }
-        guard let ticket = try? await api.videoToken(roomId: client.roomId) else { return }
-        try? await video.connect(url: ticket.url, token: ticket.token)
+    private func connectVoice() async {
+        guard let voice, !voice.isConnected else { return }
+        guard let ticket = try? await api.voiceToken(roomId: client.roomId) else { return }
+        try? await voice.connect(url: ticket.url, token: ticket.token)
     }
 
     private func finish(endForEveryone: Bool) async {
@@ -352,7 +347,7 @@ public struct LiveRoomView: View {
         let wasHost = client.isHost
         let title = client.room?.title ?? ""
         client.disconnect()
-        await video?.disconnect()
+        await voice?.disconnect()
         onFinish(LiveSessionResult(roomId: client.roomId, title: title, wasHost: wasHost, reason: reason, state: state))
     }
 }

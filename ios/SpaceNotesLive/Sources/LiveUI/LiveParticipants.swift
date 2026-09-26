@@ -5,11 +5,11 @@
 import LiveCore
 import SwiftUI
 
-/// The row of people along the top, like a video call.
+/// The row of people along the top: who is here, who is talking.
 struct LiveParticipantStrip: View {
     let members: [Member]
     let me: You?
-    @ObservedObject var video: LiveVideoObserver
+    @ObservedObject var voice: LiveVoiceObserver
     @Environment(\.liveTheme) private var theme
 
     var body: some View {
@@ -18,7 +18,7 @@ struct LiveParticipantStrip: View {
                 ForEach(members) { member in
                     LiveParticipantTile(member: member,
                                         isMe: member.connectionId == me?.connectionId,
-                                        provider: video.provider)
+                                        provider: voice.provider)
                 }
             }
             .padding(.horizontal, 16)
@@ -28,44 +28,42 @@ struct LiveParticipantStrip: View {
     }
 }
 
+/// One person: initials in their colour, name, host badge, microphone state,
+/// a ring while they speak, and a raised hand.
 struct LiveParticipantTile: View {
     let member: Member
     let isMe: Bool
-    let provider: LiveVideoProviding?
+    let provider: LiveVoiceProviding?
     @Environment(\.liveTheme) private var theme
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: theme.cornerRadius)
         let speaking = provider?.isSpeaking(uid: member.uid) ?? false
-        ZStack {
-            shape.fill(theme.tileBackground)
-            if let video = provider?.videoView(uid: member.uid) {
-                video.clipShape(shape)
-            } else {
-                Circle()
-                    .fill(Color(memberHex: member.color))
-                    .frame(width: 44, height: 44)
-                    .overlay(Text(liveInitials(member.name)).font(theme.label).foregroundColor(.white))
-            }
-        }
-        .frame(width: 132, height: 88)
-        .overlay(alignment: .bottomLeading) {
+        let micOn = provider?.isMicrophoneOn(uid: member.uid)
+        VStack(spacing: 6) {
+            Circle()
+                .fill(Color(memberHex: member.color))
+                .frame(width: 44, height: 44)
+                .overlay(Text(liveInitials(member.name)).font(theme.label).foregroundColor(.white))
+                .overlay(Circle().stroke(speaking ? theme.accent : Color.clear, lineWidth: 3).padding(-4))
+                .animation(.easeOut(duration: 0.15), value: speaking)
             HStack(spacing: 4) {
-                if let micOn = provider?.isMicrophoneOn(uid: member.uid) {
+                if let micOn {
                     Image(systemName: micOn ? "mic.fill" : "mic.slash.fill")
                         .imageScale(.small)
-                        .foregroundColor(micOn ? .white : theme.danger)
+                        .foregroundColor(micOn ? theme.secondaryText : theme.danger)
+                        .accessibilityLabel(micOn ? "Microphone on" : "Muted")
                 }
                 Text(isMe ? "\(member.name) (you)" : member.name)
                     .font(theme.caption)
-                    .foregroundColor(.white)
+                    .foregroundColor(theme.primaryText)
                     .lineLimit(1)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(Color.black.opacity(0.45)))
-            .padding(6)
         }
+        .padding(.horizontal, 8)
+        .frame(width: 108, height: 88)
+        .background(shape.fill(theme.surface))
+        .overlay(shape.stroke(speaking ? theme.accent : theme.divider, lineWidth: speaking ? 2 : 1))
         .overlay(alignment: .topTrailing) {
             if member.handRaised {
                 Image(systemName: "hand.raised.fill")
@@ -78,13 +76,13 @@ struct LiveParticipantTile: View {
             if member.isHost {
                 Image(systemName: "star.fill")
                     .imageScale(.small)
-                    .foregroundColor(.white.opacity(0.85))
+                    .foregroundColor(theme.accent)
                     .padding(6)
                     .accessibilityLabel("Host")
             }
         }
-        .overlay(shape.stroke(speaking ? theme.accent : Color.clear, lineWidth: 2))
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(speaking ? .updatesFrequently : [])
     }
 }
 

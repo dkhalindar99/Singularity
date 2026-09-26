@@ -159,17 +159,17 @@ public struct LiveConfiguration {
     public var deviceId: String
     /// A fresh Firebase ID token on every call.
     public var tokenProvider: @Sendable () async throws -> String
-    /// Camera and voice for a room, or nil for ink only.
-    public var makeVideo: (@MainActor () -> LiveVideoProviding)?
+    /// Voice for a room, or nil for ink only.
+    public var makeVoice: (@MainActor () -> LiveVoiceProviding)?
 
     public init(serverURL: URL, displayName: String, deviceId: String,
                 tokenProvider: @escaping @Sendable () async throws -> String,
-                makeVideo: (@MainActor () -> LiveVideoProviding)? = nil) {
+                makeVoice: (@MainActor () -> LiveVoiceProviding)? = nil) {
         self.serverURL = serverURL
         self.displayName = displayName
         self.deviceId = deviceId
         self.tokenProvider = tokenProvider
-        self.makeVideo = makeVideo
+        self.makeVoice = makeVoice
     }
 }
 
@@ -178,7 +178,7 @@ public struct LiveSessionView: View {
     private final class ActiveRoom {
         let ticket: LiveRoomTicket
         let client: RoomClient
-        let video: LiveVideoProviding?
+        let voice: LiveVoiceProviding?
 
         @MainActor
         init(ticket: LiveRoomTicket, configuration: LiveConfiguration) {
@@ -186,7 +186,7 @@ public struct LiveSessionView: View {
             client = RoomClient(serverURL: configuration.serverURL, roomId: ticket.roomId,
                                 name: configuration.displayName, deviceId: configuration.deviceId,
                                 tokenProvider: configuration.tokenProvider)
-            video = configuration.makeVideo?()
+            voice = configuration.makeVoice?()
         }
     }
 
@@ -210,7 +210,7 @@ public struct LiveSessionView: View {
 
     public var body: some View {
         if let active {
-            LiveRoomView(client: active.client, api: api, video: active.video) { result in
+            LiveRoomView(client: active.client, api: api, voice: active.voice) { result in
                 self.active = nil
                 onFinish(result)
             }

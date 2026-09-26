@@ -23,7 +23,6 @@ public struct LiveTheme {
     public var danger: Color
     public var warning: Color
     public var divider: Color
-    public var tileBackground: Color
     public var laser: Color
     public var handRaised: Color
     /// The colour swatches in the toolbar.
@@ -39,7 +38,7 @@ public struct LiveTheme {
 
     public init(background: Color, surface: Color, raisedSurface: Color, paper: Color, paperRule: Color,
                 primaryText: Color, secondaryText: Color, accent: Color, onAccent: Color, danger: Color, warning: Color,
-                divider: Color, tileBackground: Color, laser: Color, handRaised: Color, inkPalette: [LiveColor],
+                divider: Color, laser: Color, handRaised: Color, inkPalette: [LiveColor],
                 cornerRadius: CGFloat, title: Font, body: Font, label: Font, caption: Font,
                 pageText: @escaping (CGFloat) -> Font) {
         self.background = background
@@ -54,7 +53,6 @@ public struct LiveTheme {
         self.danger = danger
         self.warning = warning
         self.divider = divider
-        self.tileBackground = tileBackground
         self.laser = laser
         self.handRaised = handRaised
         self.inkPalette = inkPalette
@@ -81,7 +79,6 @@ public struct LiveTheme {
             danger: .liveDynamic(light: 0xC2413B, dark: 0xF0837D),
             warning: .liveDynamic(light: 0xB7791F, dark: 0xF2C26B),
             divider: .liveDynamic(light: 0xE3E6EB, dark: 0x2E333D),
-            tileBackground: .liveDynamic(light: 0x2A2F3A, dark: 0x2A2F3A),
             laser: Color(liveHex: 0xFF3B30),
             handRaised: Color(liveHex: 0xF2B84B),
             inkPalette: [

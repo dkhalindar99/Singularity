@@ -5,27 +5,25 @@
 import LiveCore
 import SwiftUI
 
-/// Camera and voice for the participant tiles. LiveUI does not depend on any
-/// video SDK: the SpaceNotesLiveVideo package implements this with LiveKit,
-/// and a room without video simply passes nil.
+/// Voice for the room. SpaceNotes Live is ink and voice only: there are no
+/// cameras, for cost and for privacy. LiveUI does not depend on any audio
+/// SDK: the SpaceNotesLiveVoice package implements this with LiveKit, and a
+/// room without voice simply passes nil.
 ///
-/// Participants are matched by uid: the video server's participant identity
-/// is the person's Firebase uid.
+/// People are matched by uid: the voice server's participant identity is the
+/// person's Firebase uid.
 @MainActor
-public protocol LiveVideoProviding: AnyObject {
+public protocol LiveVoiceProviding: AnyObject {
     /// Called whenever anything below changes, so the tiles redraw.
     var onChange: (() -> Void)? { get set }
     var isConnected: Bool { get }
     var isMicrophoneEnabled: Bool { get }
-    var isCameraEnabled: Bool { get }
 
+    /// Joins with the microphone on.
     func connect(url: String, token: String) async throws
     func disconnect() async
     func setMicrophoneEnabled(_ enabled: Bool) async throws
-    func setCameraEnabled(_ enabled: Bool) async throws
 
-    /// A live video view for this person, or nil when their camera is off.
-    func videoView(uid: String) -> AnyView?
     /// nil when the person is not in the call at all.
     func isMicrophoneOn(uid: String) -> Bool?
     func isSpeaking(uid: String) -> Bool
@@ -33,10 +31,10 @@ public protocol LiveVideoProviding: AnyObject {
 
 /// Bridges a provider's `onChange` into SwiftUI.
 @MainActor
-final class LiveVideoObserver: ObservableObject {
-    let provider: LiveVideoProviding?
+final class LiveVoiceObserver: ObservableObject {
+    let provider: LiveVoiceProviding?
 
-    init(provider: LiveVideoProviding?) {
+    init(provider: LiveVoiceProviding?) {
         self.provider = provider
         provider?.onChange = { [weak self] in self?.objectWillChange.send() }
     }

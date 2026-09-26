@@ -45,5 +45,5 @@ rootProject.name = "spacenotes-live-android"
 include(":live-core")
 // The room screen, in Compose. Knows nothing about LiveKit.
 include(":live-ui")
-// Camera and voice tiles through LiveKit.
-include(":live-video")
+// Voice through LiveKit. SpaceNotes Live is ink and voice only: no cameras.
+include(":live-voice")

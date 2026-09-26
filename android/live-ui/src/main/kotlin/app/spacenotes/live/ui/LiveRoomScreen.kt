@@ -47,8 +47,6 @@ import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.TouchApp
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.WbIncandescent
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -146,7 +144,7 @@ public fun LiveRoomScreen(
     api: LiveApi,
     onSessionEnded: (LiveSessionResult) -> Unit,
     modifier: Modifier = Modifier,
-    videoProvider: LiveVideoProvider = NoVideo,
+    voiceProvider: LiveVoiceProvider = NoVoice,
     theme: LiveTheme = LiveTheme.Light,
 ) {
     CompositionLocalProvider(LocalLiveTheme provides theme) {
@@ -161,9 +159,8 @@ public fun LiveRoomScreen(
         val canRedo by client.canRedo.collectAsStateWithLifecycle()
         val liveInk by client.liveInk.collectAsStateWithLifecycle()
         val pointers by client.pointers.collectAsStateWithLifecycle()
-        val videoParticipants by videoProvider.participants.collectAsStateWithLifecycle()
-        val micOn by videoProvider.microphoneOn.collectAsStateWithLifecycle()
-        val cameraOn by videoProvider.cameraOn.collectAsStateWithLifecycle()
+        val voiceParticipants by voiceProvider.participants.collectAsStateWithLifecycle()
+        val micOn by voiceProvider.microphoneOn.collectAsStateWithLifecycle()
         val snackbar = remember { SnackbarHostState() }
 
         val isHost = me?.isHost == true
@@ -198,22 +195,19 @@ public fun LiveRoomScreen(
         // Voice starts once the room has let us in (the ticket needs membership).
         var micDecision by remember { mutableStateOf<Boolean?>(null) }
         val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { micDecision = it }
-        val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) videoProvider.setCamera(true)
-        }
-        val hasVideo = videoProvider !== NoVideo
+        val hasVoice = voiceProvider !== NoVoice
         val joined = status == RoomStatus.Connected
         LaunchedEffect(joined) {
-            if (!hasVideo || !joined || micDecision != null) return@LaunchedEffect
+            if (!hasVoice || !joined || micDecision != null) return@LaunchedEffect
             val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
             if (granted) micDecision = true else micPermission.launch(Manifest.permission.RECORD_AUDIO)
         }
         LaunchedEffect(micDecision) {
             val microphone = micDecision ?: return@LaunchedEffect
-            val ticket = runCatching { api.videoToken(client.roomId) }.getOrNull() ?: return@LaunchedEffect
-            runCatching { videoProvider.connect(ticket.url, ticket.token, microphone) }
+            val ticket = runCatching { api.voiceToken(client.roomId) }.getOrNull() ?: return@LaunchedEffect
+            runCatching { voiceProvider.connect(ticket.url, ticket.token, microphone) }
         }
-        DisposableEffect(videoProvider) { onDispose { videoProvider.disconnect() } }
+        DisposableEffect(voiceProvider) { onDispose { voiceProvider.disconnect() } }
 
         LaunchedEffect(client) {
             client.events.collect { event ->
@@ -235,7 +229,7 @@ public fun LiveRoomScreen(
             val ended = status as? RoomStatus.Ended ?: return@LaunchedEffect
             if (reported) return@LaunchedEffect
             reported = true
-            videoProvider.disconnect()
+            voiceProvider.disconnect()
             val snapshot = if (isHost) {
                 runCatching { api.snapshot(client.roomId) }.getOrNull() ?: client.state.value
             } else {
@@ -267,7 +261,7 @@ public fun LiveRoomScreen(
             Box(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize()) {
                     RoomHeader(room?.title ?: "SpaceNotes Live", room?.code, status)
-                    ParticipantStrip(members, me?.uid, videoParticipants, videoProvider)
+                    ParticipantStrip(members, me?.uid, voiceParticipants)
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         if (page != null) {
                             LivePageCanvas(
@@ -320,20 +314,11 @@ public fun LiveRoomScreen(
                             client.addPage(newPage, current.id)
                             chosenPageId = newPage.id
                         },
-                        hasVideo = hasVideo,
+                        hasVoice = hasVoice,
                         micOn = micOn,
                         onMic = {
                             val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                            if (granted) videoProvider.setMicrophone(!micOn) else micPermission.launch(Manifest.permission.RECORD_AUDIO)
-                        },
-                        cameraOn = cameraOn,
-                        onCamera = {
-                            val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                            when {
-                                cameraOn -> videoProvider.setCamera(false)
-                                granted -> videoProvider.setCamera(true)
-                                else -> cameraPermission.launch(Manifest.permission.CAMERA)
-                            }
+                            if (granted) voiceProvider.setMicrophone(!micOn) else micPermission.launch(Manifest.permission.RECORD_AUDIO)
                         },
                         handRaised = handRaised,
                         onHand = {
@@ -463,8 +448,7 @@ private fun initials(name: String): String =
 private fun ParticipantStrip(
     members: List<Member>,
     myUid: String?,
-    video: Map<String, LiveVideoParticipant>,
-    provider: LiveVideoProvider,
+    voice: Map<String, LiveVoiceParticipant>,
 ) {
     val theme = LocalLiveTheme.current
     // One tile per person, even when they are here on two devices.
@@ -477,41 +461,45 @@ private fun ParticipantStrip(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(people, key = { it.uid }) { person ->
-            val v = video[person.uid]
+            val v = voice[person.uid]
             val color = memberColor(person.color, theme.accent)
             Box(
                 Modifier
-                    .size(width = 132.dp, height = 88.dp)
+                    .size(width = 112.dp, height = 88.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(theme.surfaceVariant)
-                    .border(2.dp, if (v?.speaking == true) theme.accent else Color.Transparent, RoundedCornerShape(12.dp)),
+                    .background(theme.surfaceVariant),
             ) {
-                if (v?.hasVideo == true) {
-                    provider.Video(person.uid, Modifier.fillMaxSize())
-                } else {
-                    Box(
-                        Modifier.size(44.dp).clip(CircleShape).background(color).align(Alignment.Center),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(initials(person.name), color = Color.White, fontWeight = FontWeight.SemiBold)
-                    }
+                // Voice only, so the tile is the person's initials; a ring
+                // round them lights up while they speak.
+                Box(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp)
+                        .size(52.dp)
+                        .border(3.dp, if (v?.speaking == true) theme.accent else Color.Transparent, CircleShape)
+                        .padding(5.dp)
+                        .clip(CircleShape)
+                        .background(color),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(initials(person.name), color = Color.White, fontWeight = FontWeight.SemiBold)
                 }
                 Row(
-                    Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color(0x66000000)).padding(horizontal = 6.dp, vertical = 2.dp),
+                    Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 6.dp, vertical = 3.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (v != null) {
                         Icon(
                             if (v.microphoneOn) Icons.Filled.Mic else Icons.Filled.MicOff,
-                            contentDescription = if (v.microphoneOn) "Microphone on" else "Microphone off",
-                            tint = Color.White,
+                            contentDescription = if (v.microphoneOn) "Microphone on" else "Muted",
+                            tint = if (v.microphoneOn) theme.onSurfaceMuted else theme.danger,
                             modifier = Modifier.size(14.dp),
                         )
                         Spacer(Modifier.width(4.dp))
                     }
                     Text(
                         (if (person.uid == myUid) "You" else person.name) + if (person.isHost) " · host" else "",
-                        color = Color.White,
+                        color = theme.onSurface,
                         fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -626,11 +614,9 @@ private fun ControlBar(
     followHost: Boolean,
     onFollowHost: () -> Unit,
     onAddPage: () -> Unit,
-    hasVideo: Boolean,
+    hasVoice: Boolean,
     micOn: Boolean,
     onMic: () -> Unit,
-    cameraOn: Boolean,
-    onCamera: () -> Unit,
     handRaised: Boolean,
     onHand: () -> Unit,
     raisedHands: Int,
@@ -642,9 +628,8 @@ private fun ControlBar(
         Modifier.fillMaxWidth().background(theme.surface).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (hasVideo) {
+        if (hasVoice) {
             ToolButton(if (micOn) Icons.Filled.Mic else Icons.Filled.MicOff, if (micOn) "Mute" else "Unmute", false, true, onMic)
-            ToolButton(if (cameraOn) Icons.Filled.Videocam else Icons.Filled.VideocamOff, if (cameraOn) "Camera off" else "Camera on", false, true, onCamera)
         }
         ToolButton(Icons.Filled.PanTool, if (handRaised) "Lower hand" else "Raise hand", handRaised, true, onHand)
         Spacer(Modifier.width(12.dp))

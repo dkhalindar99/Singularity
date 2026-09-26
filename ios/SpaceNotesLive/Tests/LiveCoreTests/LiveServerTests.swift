@@ -228,8 +228,8 @@ final class LiveServerTests: XCTestCase {
         XCTAssertEqual(snapshot.state, host.confirmed)
         XCTAssertEqual(snapshot.room.id, host.roomId)
         XCTAssertFalse(snapshot.ended)
-        // Video is optional: a server without LiveKit keys answers nil.
-        _ = try await api("dev:\(hostUid):Host").videoToken(roomId: host.roomId)
+        // Voice is optional: a server without LiveKit keys answers nil.
+        _ = try await api("dev:\(hostUid):Host").voiceToken(roomId: host.roomId)
     }
 
     func testEndingTheRoomEndsEveryone() async throws {

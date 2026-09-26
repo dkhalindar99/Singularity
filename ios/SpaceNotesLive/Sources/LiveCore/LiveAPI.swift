@@ -26,8 +26,9 @@ public struct RoomSnapshot: Codable, Hashable, Sendable {
     public var state: RoomState
 }
 
-/// A LiveKit ticket for the room's video and voice.
-public struct VideoTicket: Codable, Hashable, Sendable {
+/// A LiveKit ticket for the room's voice. SpaceNotes Live has no cameras;
+/// the server's token only lets a person publish their microphone.
+public struct VoiceTicket: Codable, Hashable, Sendable {
     public var url: String
     public var token: String
 }
@@ -75,12 +76,13 @@ public final class LiveAPI: @unchecked Sendable {
         return try decode(RoomLookup.self, data)
     }
 
-    /// nil when the server has no video (503 `video-unavailable`): the room
-    /// carries on with ink only.
-    public func videoToken(roomId: String) async throws -> VideoTicket? {
+    /// nil when the server has no LiveKit keys (503 `video-unavailable`): the
+    /// room carries on with ink only. The route keeps its protocol name,
+    /// `video-token`.
+    public func voiceToken(roomId: String) async throws -> VoiceTicket? {
         do {
             let (data, _) = try await call("POST", "rooms/\(escaped(roomId))/video-token")
-            return try decode(VideoTicket.self, data)
+            return try decode(VoiceTicket.self, data)
         } catch LiveAPIError.http(status: 503, _) {
             return nil
         }

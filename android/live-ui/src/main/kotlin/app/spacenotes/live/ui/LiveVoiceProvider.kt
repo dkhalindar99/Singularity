@@ -3,39 +3,37 @@
 
 package app.spacenotes.live.ui
 
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /** One person in the call, keyed by the same uid the room uses. */
-public data class LiveVideoParticipant(
+public data class LiveVoiceParticipant(
     val identity: String,
-    val hasVideo: Boolean,
     val microphoneOn: Boolean,
     val speaking: Boolean,
     val isLocal: Boolean,
 )
 
-public sealed interface LiveVideoStatus {
-    /** Not started, or the server has no video: the room carries on with ink only. */
-    public data object Off : LiveVideoStatus
-    public data object Connecting : LiveVideoStatus
-    public data object Connected : LiveVideoStatus
-    public data class Failed(val message: String) : LiveVideoStatus
+public sealed interface LiveVoiceStatus {
+    /** Not started, or the server has no voice: the room carries on with ink only. */
+    public data object Off : LiveVoiceStatus
+    public data object Connecting : LiveVoiceStatus
+    public data object Connected : LiveVoiceStatus
+    public data class Failed(val message: String) : LiveVoiceStatus
 }
 
 /**
- * Camera and voice, supplied by the host app. The room screen only needs this
- * interface, so it does not depend on LiveKit; `live-video` implements it.
+ * Voice, supplied by the host app. SpaceNotes Live is ink and voice only —
+ * no cameras, for cost and privacy — and the server's ticket lets a
+ * participant publish only a microphone. The room screen needs only this
+ * interface, so it does not depend on LiveKit; `live-voice` implements it.
  */
-public interface LiveVideoProvider {
-    public val status: StateFlow<LiveVideoStatus>
+public interface LiveVoiceProvider {
+    public val status: StateFlow<LiveVoiceStatus>
 
     /** Everyone in the call, including this device, by identity (uid). */
-    public val participants: StateFlow<Map<String, LiveVideoParticipant>>
+    public val participants: StateFlow<Map<String, LiveVoiceParticipant>>
     public val microphoneOn: StateFlow<Boolean>
-    public val cameraOn: StateFlow<Boolean>
 
     /** Joins the call. [microphone] is false when the person did not allow recording. */
     public suspend fun connect(url: String, token: String, microphone: Boolean)
@@ -43,29 +41,17 @@ public interface LiveVideoProvider {
     public fun disconnect()
 
     public fun setMicrophone(on: Boolean)
-
-    public fun setCamera(on: Boolean)
-
-    /** The video of [identity], filling [modifier]. Draws nothing when there is none. */
-    @Composable
-    public fun Video(identity: String, modifier: Modifier)
 }
 
-/** Ink only: for servers without video, previews and tests. */
-public object NoVideo : LiveVideoProvider {
-    override val status: StateFlow<LiveVideoStatus> = MutableStateFlow(LiveVideoStatus.Off)
-    override val participants: StateFlow<Map<String, LiveVideoParticipant>> = MutableStateFlow(emptyMap())
+/** Ink only: for servers without voice, previews and tests. */
+public object NoVoice : LiveVoiceProvider {
+    override val status: StateFlow<LiveVoiceStatus> = MutableStateFlow(LiveVoiceStatus.Off)
+    override val participants: StateFlow<Map<String, LiveVoiceParticipant>> = MutableStateFlow(emptyMap())
     override val microphoneOn: StateFlow<Boolean> = MutableStateFlow(false)
-    override val cameraOn: StateFlow<Boolean> = MutableStateFlow(false)
 
     override suspend fun connect(url: String, token: String, microphone: Boolean): Unit = Unit
 
     override fun disconnect(): Unit = Unit
 
     override fun setMicrophone(on: Boolean): Unit = Unit
-
-    override fun setCamera(on: Boolean): Unit = Unit
-
-    @Composable
-    override fun Video(identity: String, modifier: Modifier): Unit = Unit
 }

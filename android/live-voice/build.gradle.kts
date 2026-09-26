@@ -3,19 +3,14 @@
 
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.compose.compiler)
 }
 
 android {
-    namespace = "app.spacenotes.live.video"
+    namespace = "app.spacenotes.live.voice"
     compileSdk = 37
 
     defaultConfig {
         minSdk = 26
-    }
-
-    buildFeatures {
-        compose = true
     }
 
     compileOptions {
@@ -30,12 +25,8 @@ kotlin {
 
 dependencies {
     api(project(":live-ui"))
-    // LiveKit's official Android SDK (Apache 2.0). Only this module knows it.
+    // LiveKit's official Android SDK (Apache 2.0), for voice. Only this module knows it.
     implementation(libs.livekit.android)
 
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.foundation)
-    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
 }

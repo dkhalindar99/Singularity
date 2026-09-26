@@ -67,8 +67,8 @@ class LiveApiTest {
 
         assertEquals(RoomLookup("r1", "Cardiology", "Asha", false), api.lookup("k7qm3x"))
         assertNull(api.lookup("ZZZZZZ"))
-        assertEquals(VideoTicket("wss://lk.example", "lk-token"), api.videoToken("r1"))
-        assertNull(api.videoToken("r2"))
+        assertEquals(VoiceTicket("wss://lk.example", "lk-token"), api.voiceToken("r1"))
+        assertNull(api.voiceToken("r2"))
         api.uploadAsset("r1", "A1", byteArrayOf(1, 2, 3), "image/png")
         assertArrayEquals(byteArrayOf(1, 2, 3), lastBody)
         assertArrayEquals("PNGDATA".toByteArray(), api.downloadAsset("r1", "A1"))

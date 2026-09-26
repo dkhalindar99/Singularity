@@ -50,14 +50,15 @@ final class LiveAPITests: XCTestCase {
         XCTAssertEqual(recorder.requests.first?.url?.absoluteString, "https://live.example.com/rooms/code/K7QM3X")
     }
 
-    func testVideoTokenIsNilWhenVideoIsUnavailable() async throws {
+    func testVoiceTokenIsNilWhenVoiceIsUnavailable() async throws {
         let recorder = Recorder()
         recorder.answer = (503, #"{"error":"video-unavailable"}"#)
-        let ticket = try await api(recorder).videoToken(roomId: "r1")
+        let ticket = try await api(recorder).voiceToken(roomId: "r1")
         XCTAssertNil(ticket)
+        XCTAssertEqual(recorder.requests.last?.url?.path, "/rooms/r1/video-token", "the protocol's route name")
         recorder.answer = (200, #"{"url":"wss://lk","token":"t"}"#)
-        let real = try await api(recorder).videoToken(roomId: "r1")
-        XCTAssertEqual(real, VideoTicket(url: "wss://lk", token: "t"))
+        let real = try await api(recorder).voiceToken(roomId: "r1")
+        XCTAssertEqual(real, VoiceTicket(url: "wss://lk", token: "t"))
     }
 
     func testErrorsCarryTheServerCode() async {

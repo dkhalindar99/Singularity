@@ -1,8 +1,10 @@
 # SpaceNotes Live — iPad client
 
 The Swift side of SpaceNotes Live: a study room where one student hosts a
-shared notebook, friends join with camera and voice tiles, and everyone's ink
-and text appear on everyone's page as it is written. The contract with the
+shared notebook, friends join and talk, and everyone's ink and text appear
+on everyone's page as it is written. It is ink and voice only: no cameras,
+for cost and for privacy (India's DPDP Act); the server's LiveKit token only
+lets a person publish their microphone. The contract with the
 server and the web and Android clients is `protocol/PROTOCOL.md`; the files in
 `fixtures/protocol/` are its executable form.
 
@@ -11,7 +13,7 @@ Two Swift packages live here:
 ```
 ios/
   SpaceNotesLive/          LiveCore + LiveUI (no third-party dependencies)
-  SpaceNotesLiveVideo/     LiveVideo: LiveKit camera and voice
+  SpaceNotesLiveVoice/     LiveVoice: LiveKit voice
 ```
 
 ## What each target is
@@ -91,7 +93,8 @@ ios/
     `views`; `view` and `hand` also update `members`.
   - Host controls: `remove(uid:)`, `endRoom()`.
   - Reconnect backoff 0.5, 1, 2, 4, then every 8 s; ping every 20 s.
-- **`LiveAPI`** — `createRoom`, `lookup(code:)`, `videoToken` (nil on 503),
+- **`LiveAPI`** — `createRoom`, `lookup(code:)`, `voiceToken` (the
+  protocol's `POST /rooms/{id}/video-token` route; nil on 503),
   `uploadAsset`, `asset`, `snapshot` (`{ room, ended, state }`). Takes an injectable HTTP function.
 - **Transport** — `WebSocketTransport` with `URLSessionWebSocketTransport`
   (real) and `InMemoryTransport` (tests, previews); `LiveScheduler` with
@@ -133,27 +136,28 @@ Linux and macOS the module is empty. It re-exports LiveCore.
   that change the notebook are greyed out when `canDraw` is false; the laser
   always works. A finger-drawing toggle switches between Pencil-only and any
   input.
-- `LiveVideoProviding` — the protocol the tiles use (`videoView(uid:)`,
-  `isMicrophoneOn(uid:)`, `isSpeaking(uid:)`, mic and camera switches), so
-  LiveUI does not depend on LiveKit. With no provider, a tile is a coloured
-  circle with initials.
+- `LiveVoiceProviding` — what the tiles and the mute button use
+  (`isMicrophoneOn(uid:)`, `isSpeaking(uid:)`, `setMicrophoneEnabled`), so
+  LiveUI does not depend on LiveKit. A tile is the person's initials in their
+  colour, their name, a host badge, their microphone state, a ring while they
+  speak, and a raised hand. With no provider there is no voice: the tiles
+  show who is here and the room is ink only.
 - `LiveTheme` — every colour and font in one struct (`.liveTheme(_:)`), with
   neutral defaults. Text on the page goes through `theme.pageText(size)`.
 
-### `LiveVideo` (SpaceNotesLiveVideo) — LiveKit
+### `LiveVoice` (SpaceNotesLiveVoice) — LiveKit
 
-`LiveKitVideoProvider` implements `LiveVideoProviding` on LiveKit's Swift SDK
+`LiveKitVoiceProvider` implements `LiveVoiceProviding` on LiveKit's Swift SDK
 (`https://github.com/livekit/client-sdk-swift`, `from: "2.17.0"`,
-Apache-2.0). It joins with the microphone on and the camera off; the camera
-captures 360p at 20 fps and publishes simulcast 180p and 360p layers; adaptive
-stream and dynacast are on; tiles use LiveKit's `SwiftUIVideoView`. It is a
-separate package so LiveCore's tests never resolve LiveKit. Before shipping,
-record LiveKit and its licence in the notebook's `NOTICE.md`, and add
-`NSMicrophoneUsageDescription` and `NSCameraUsageDescription` to the app's
-Info.plist.
+Apache-2.0). It joins with the microphone on, mutes and unmutes it, and reads
+who is speaking from LiveKit. It never publishes a camera. It is a separate
+package so LiveCore's tests never resolve LiveKit. Before shipping, record
+LiveKit and its licence in the notebook's `NOTICE.md`, and add
+`NSMicrophoneUsageDescription` to the app's Info.plist (no camera usage
+description: the app never asks for the camera).
 
-Tiles are matched to video by uid: the server must issue LiveKit tokens whose
-participant identity is the Firebase uid.
+Tiles are matched to voice participants by uid: the server must issue LiveKit
+tokens whose participant identity is the Firebase uid.
 
 ## Running the tests
 
@@ -219,7 +223,7 @@ created per account per hour.
 
 ## How the notebook embeds it
 
-Vendor `ios/SpaceNotesLive` (and `ios/SpaceNotesLiveVideo` when video is
+Vendor `ios/SpaceNotesLive` (and `ios/SpaceNotesLiveVoice` when voice is
 wanted) into the notebook repo as local path packages, the way TeachDraw is,
 and add them to `project.yml` under `packages:`. Then:
 
@@ -240,8 +244,8 @@ and add them to `project.yml` under `packages:`. Then:
    called on every connect and every HTTP call.
 4. **Present** `LiveSessionView(configuration:source:onFinish:)`, with
    `.liveTheme(...)` built from `Theme.swift` / `Typography.swift` (faded
-   indigo). `makeVideo: { LiveKitVideoProvider() }` turns on camera and
-   voice; leave it nil for ink only.
+   indigo). `makeVoice: { LiveKitVoiceProvider() }` turns on voice; leave it
+   nil for ink only.
 5. **Save back.** `onFinish` receives a `LiveSessionResult` (nil if the
    person cancelled in the lobby). For the host, `state` is the server's
    snapshot when this device has nothing unsent; `result.pages` holds each
@@ -258,18 +262,14 @@ toolchain; there is no Xcode, UIKit, SwiftUI or PencilKit.
   live tests passed against the real room server (Node, dev auth) three runs
   in a row, over the real URLSession WebSocket transport, with one skipped on
   Linux as described above.
-- **Compiled as an empty module only:** `LiveUI`. None of its SwiftUI,
-  UIKit or PencilKit code has been compiled or run. It was written against
-  the iOS 17 SDK APIs with care (PencilKit calls mirror the notebook's own
-  `PortableStrokeMapping.swift`), but expect a round of compile fixes in
-  Xcode, and it needs trying on an iPad: in particular the passive touch
-  observer alongside PencilKit's drawing gesture, the zoomed canvases'
-  geometry, and text editing focus.
-- **Not compiled at all:** `SpaceNotesLiveVideo`. It was written against
-  LiveKit Swift SDK 2.17.0's source (`Room`, `RoomOptions`,
-  `CameraCaptureOptions`, `VideoPublishOptions`, `VideoParameters` presets,
-  `RoomDelegate`, `SwiftUIVideoView`), read directly from the repository, but
-  never built.
+- **Compiled only in CI (Xcode on macOS), never run:** `LiveUI` and the
+  LiveKit package, which CI built green for iOS at commit 0b22734, when it was
+  still the camera-and-voice `SpaceNotesLiveVideo`. The voice-only rewrite
+  (`SpaceNotesLiveVoice`, avatar tiles, no camera) removes code and uses only
+  LiveKit calls that build already compiled, but it has not been through CI
+  yet. Neither has run on an iPad: in particular the passive touch observer
+  alongside PencilKit's drawing gesture, the zoomed canvases' geometry, text
+  editing focus, and the microphone and speaking ring.
 - **Not yet run on Apple's URLSession:** the live tests. Run them on a Mac
   (`swift test` with `LIVE_SERVER_URL`), where the large-frame test is not
   skipped.

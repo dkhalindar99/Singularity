@@ -46,18 +46,18 @@ jobs:
       - name: LiveCore tests on macOS
         run: swift test
         working-directory: ios/SpaceNotesLive
-      # LiveUI (SwiftUI + PencilKit) and the LiveKit video package only exist
+      # LiveUI (SwiftUI + PencilKit) and the LiveKit voice package only exist
       # on iOS; this is the first place they are compiled for real.
       - name: Build LiveUI for iOS
         run: xcodebuild -scheme LiveUI -destination 'generic/platform=iOS Simulator' -skipPackagePluginValidation build CODE_SIGNING_ALLOWED=NO
         working-directory: ios/SpaceNotesLive
-      - name: Build SpaceNotesLiveVideo for iOS
-        working-directory: ios/SpaceNotesLiveVideo
+      - name: Build SpaceNotesLiveVoice for iOS
+        working-directory: ios/SpaceNotesLiveVoice
         run: |
           xcodebuild -list
           # SwiftPM names the scheme after the package or the product,
           # depending on the Xcode version; build whichever exists.
-          SCHEME=$(xcodebuild -list -json | python3 -c "import json,sys; s=json.load(sys.stdin)['workspace']['schemes']; print(next(x for x in ['SpaceNotesLiveVideo','LiveVideo','SpaceNotesLiveVideo-Package'] if x in s))")
+          SCHEME=$(xcodebuild -list -json | python3 -c "import json,sys; s=json.load(sys.stdin)['workspace']['schemes']; print(next(x for x in ['SpaceNotesLiveVoice','LiveVoice','SpaceNotesLiveVoice-Package'] if x in s))")
           xcodebuild -scheme "$SCHEME" -destination 'generic/platform=iOS Simulator' -skipPackagePluginValidation build CODE_SIGNING_ALLOWED=NO
 
   android:

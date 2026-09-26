@@ -50,9 +50,9 @@ public data class RoomLookup(
     val allowGuests: Boolean = true,
 )
 
-/** Where to reach LiveKit, and the ticket for it. */
+/** Where to reach LiveKit for voice, and the ticket for it. */
 @Serializable
-public data class VideoTicket(val url: String, val token: String)
+public data class VoiceTicket(val url: String, val token: String)
 
 /** An HTTP answer that was not a success. [code] is the server's error code, if it sent one. */
 public class LiveApiException(
@@ -91,10 +91,14 @@ public class LiveApi(
         }
     }
 
-    /** A LiveKit ticket, or null when the server has no video (503): the room carries on with ink only. */
-    public suspend fun videoToken(roomId: String): VideoTicket? {
+    /**
+     * A LiveKit ticket for voice (it allows publishing a microphone only), or
+     * null when the server has no LiveKit (503): the room carries on with ink
+     * only. The route keeps its protocol name, `video-token`.
+     */
+    public suspend fun voiceToken(roomId: String): VoiceTicket? {
         return try {
-            decode(VideoTicket.serializer(), call("POST", "/rooms/${encodePath(roomId)}/video-token", ByteArray(0).toRequestBody(JSON)))
+            decode(VoiceTicket.serializer(), call("POST", "/rooms/${encodePath(roomId)}/video-token", ByteArray(0).toRequestBody(JSON)))
         } catch (e: LiveApiException) {
             if (e.status == 503) null else throw e
         }
