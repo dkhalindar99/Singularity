@@ -29,7 +29,9 @@ room server only issues the LiveKit ticket (see "HTTP API").
   treated as errors, so a newer server can talk to an older client.
 - Unknown fields must be ignored. The server stores strokes and pages
   verbatim, unknown fields included; a client may drop fields it does not know.
-- Maximum frame the server accepts: 256 KiB. Maximum stroke: 5,000 points.
+- Maximum frame the server accepts: 1 MiB. Maximum stroke: 5,000 points (at
+  about 150 bytes a point in JSON, a full stroke is roughly 750 KB, so it
+  always fits in one frame; clients never split a stroke).
 
 ## Identifiers
 

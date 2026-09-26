@@ -27,7 +27,7 @@ import { FileStore, GcsStore, MemoryStore } from "./store.js";
 import { PROTOCOL_VERSION } from "../../web/src/core/reducer.js";
 import { RateLimiter } from "./rateLimit.js";
 
-const MAX_FRAME = 256 * 1024;
+const MAX_FRAME = 1024 * 1024; // a 5,000-point stroke is ~750 KB of JSON
 const MAX_ROOM_BODY = 16 * 1024 * 1024;
 const MAX_ASSET = 8 * 1024 * 1024;
 const HELLO_TIMEOUT_MS = 10_000;
