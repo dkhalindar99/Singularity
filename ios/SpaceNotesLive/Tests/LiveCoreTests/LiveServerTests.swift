@@ -199,13 +199,35 @@ final class LiveServerTests: XCTestCase {
         XCTAssertEqual(host.confirmed, guest.confirmed)
     }
 
+    func testAFullLengthStrokeCrossesInOneFrame() async throws {
+        #if os(Linux)
+        // swift-corelibs-foundation's WebSocket (over libcurl) silently drops
+        // outgoing messages somewhere between 16 and 48 KB while the socket
+        // stays open; Node sends the same 797 KB frame to this server fine.
+        // Apple's URLSession is a different implementation.
+        throw XCTSkip("URLSessionWebSocketTask on Linux cannot send large frames")
+        #endif
+        let (host, guest, _, _) = try await connectedPair()
+        var long = stroke(0)
+        long.points = (0..<5000).map { i in
+            LivePoint(x: 10 + Double(i) * 0.1123456789, y: 20 + Double(i % 97) * 0.987654321, pressure: 0.723456789,
+                      timeOffset: Double(i) / 240.123, width: 2.123456789, azimuth: 0.987654321, altitude: 1.123456789)
+        }
+        guest.addStroke(pageId: page, stroke: long)
+        try await waitUntil("host has all 5,000 points") { host.state.page(self.page)?.visibleStrokes.first?.points.count == 5000 }
+        XCTAssertEqual(host.state.page(page)?.visibleStrokes.first, long)
+        XCTAssertEqual(guest.status, .connected)
+    }
+
     func testSnapshotMatchesTheRoom() async throws {
         let (host, guest, _, _) = try await connectedPair()
         guest.addStroke(pageId: page, stroke: stroke(10))
         try await waitUntil("confirmed") { guest.pendingOps.isEmpty }
         try await waitUntil("host caught up") { host.confirmed.seq == guest.confirmed.seq }
         let snapshot = try await api("dev:\(hostUid):Host").snapshot(roomId: host.roomId)
-        XCTAssertEqual(snapshot, host.confirmed)
+        XCTAssertEqual(snapshot.state, host.confirmed)
+        XCTAssertEqual(snapshot.room.id, host.roomId)
+        XCTAssertFalse(snapshot.ended)
         // Video is optional: a server without LiveKit keys answers nil.
         _ = try await api("dev:\(hostUid):Host").videoToken(roomId: host.roomId)
     }

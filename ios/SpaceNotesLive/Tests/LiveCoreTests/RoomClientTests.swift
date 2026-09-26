@@ -23,7 +23,8 @@ final class RoomClientTests: XCTestCase {
                                 self.transports.append(transport)
                                 return transport
                             },
-                            scheduler: scheduler)
+                            scheduler: scheduler,
+                            opCounterStart: 0)
     }
 
     // MARK: Helpers
@@ -99,6 +100,18 @@ final class RoomClientTests: XCTestCase {
         XCTAssertEqual(client.room?.code, "K7QM3X")
         XCTAssertEqual(client.members.count, 3)
         XCTAssertTrue(client.canDraw)
+    }
+
+    func testTheOpCounterStartsFromTheClock() async {
+        let before = Int(Date().timeIntervalSince1970 * 1000)
+        let fresh = RoomClient(serverURL: URL(string: "https://live.example.com")!, roomId: "room-1", name: "Asha",
+                               deviceId: "dev", tokenProvider: { "t" }, transportFactory: { InMemoryTransport() },
+                               scheduler: scheduler)
+        let id = fresh.addStroke(pageId: page, stroke: stroke("S"))
+        let counter = Int(id?.split(separator: ":").last ?? "") ?? 0
+        XCTAssertGreaterThan(counter, before, "a relaunch never reuses an earlier launch's ids")
+        XCTAssertLessThanOrEqual(counter, Int(Date().timeIntervalSince1970 * 1000) + 1)
+        XCTAssertEqual(fresh.addStroke(pageId: page, stroke: stroke("T")), "dev:\(counter + 1)")
     }
 
     func testSocketURL() {
@@ -258,9 +271,11 @@ final class RoomClientTests: XCTestCase {
         XCTAssertEqual(client.status, .ended(reason: "removed-by-host"), "an ended client stays ended")
     }
 
-    func testAnApplicationCloseCodeEndsEvenWithoutItsFrame() async {
+    func testATerminalCloseReasonEndsEvenWithoutItsFrame() async {
         await connected()
-        socket.drop(code: 4000, reason: "room-ended")
+        // As Linux reports the server's 4000 close: the code is lost, the
+        // reason is not.
+        socket.drop(code: 1003, reason: "room-ended")
         XCTAssertEqual(client.status, .ended(reason: "room-ended"))
         scheduler.advance(by: 60)
         XCTAssertEqual(transports.count, 1)
@@ -273,20 +288,34 @@ final class RoomClientTests: XCTestCase {
         scheduler.advance(by: 0.5)
         await client.openTask?.value
         socket.receive(welcome())
-        socket.drop(code: 1006, reason: "abnormal")
+        socket.drop(code: nil, reason: "The network connection was lost.")
         XCTAssertEqual(client.status, .reconnecting)
+        scheduler.advance(by: 0.5)
+        await client.openTask?.value
+        socket.drop(code: 1003, reason: "no-such-room")
+        XCTAssertEqual(client.status, .ended(reason: "no-such-room"))
     }
 
     func testErrors() async {
         await connected()
-        socket.receive(.error(code: "rate-limited", message: "slow down"))
-        XCTAssertEqual(client.status, .reconnecting)
-        scheduler.advance(by: 0.5)
-        await client.openTask?.value
+        // Recoverable codes reconnect, and the backoff keeps growing.
+        var delays: [Double] = []
+        for code in ["rate-limited", "unauthenticated", "too-large", "brand-new-code"] {
+            socket.receive(.error(code: code, message: "…"))
+            XCTAssertEqual(client.status, .reconnecting, code)
+            delays.append(scheduler.pendingDelays.first ?? -1)
+            scheduler.advance(by: delays.last!)
+            await client.openTask?.value
+        }
+        XCTAssertEqual(delays, [0.5, 1, 2, 4])
+        XCTAssertEqual(transports.count, 5)
+        for code in ["bad-hello", "room-full", "guests-not-allowed", "protocol-mismatch"] {
+            XCTAssertTrue(RoomClient.terminalErrorCodes.contains(code))
+        }
         socket.receive(.error(code: "no-such-room", message: "gone"))
         XCTAssertEqual(client.status, .ended(reason: "no-such-room"))
         scheduler.advance(by: 60)
-        XCTAssertEqual(transports.count, 2)
+        XCTAssertEqual(transports.count, 5)
     }
 
     func testUnknownAndGarbageFramesAreIgnored() async {
@@ -511,11 +540,52 @@ final class RoomClientTests: XCTestCase {
         XCTAssertEqual(socket.sent.count, 1)
         XCTAssertEqual(visibleStrokeIds(), ["FULL"])
 
-        let thinned = tooLong.limitedToMaximumPoints()
-        XCTAssertEqual(thinned.points.count, 5000)
-        XCTAssertEqual(thinned.points.first, tooLong.points.first)
-        XCTAssertEqual(thinned.points.last, tooLong.points.last)
-        XCTAssertEqual(full.limitedToMaximumPoints(), full)
+        let pieces = tooLong.continuedAtMaximumPoints()
+        XCTAssertEqual(pieces.map(\.points.count), [5000, 2])
+        XCTAssertEqual(pieces[0].id, "TOO-LONG", "the first keeps the live preview's id")
+        XCTAssertNotEqual(pieces[1].id, "TOO-LONG")
+        XCTAssertEqual(pieces[1].points[0].x, tooLong.points[4999].x, "carries on from the last point")
+        XCTAssertEqual(pieces[1].points[0].timeOffset, 0)
+        XCTAssertEqual(pieces[1].points[1], LivePoint(x: points[0].x, y: points[0].y, pressure: points[0].pressure,
+                                                      timeOffset: points[0].timeOffset - points[4999].timeOffset,
+                                                      width: points[0].width, azimuth: points[0].azimuth, altitude: points[0].altitude))
+        XCTAssertEqual(full.continuedAtMaximumPoints(), [full])
+        for piece in pieces { XCTAssertNotNil(client.addStroke(pageId: page, stroke: piece)) }
+        XCTAssertEqual(socket.sent.count, 3, "one stroke.add each")
+    }
+
+    func testAnOpTooLargeToSendIsDroppedLocally() async {
+        await connected()
+        var rejected: [(String, String)] = []
+        client.onReject = { rejected.append(($0, $1)) }
+        let huge = LiveText(id: "BIG", text: String(repeating: "x", count: 1_100_000),
+                            frame: LiveFrame(x: 0, y: 0, width: 100, height: 20), fontSize: 16, color: black)
+        XCTAssertNil(client.upsertText(pageId: page, text: huge))
+        XCTAssertTrue(sentOps().isEmpty, "never sent")
+        XCTAssertTrue(client.pendingOps.isEmpty)
+        XCTAssertEqual(client.state.page(page)?.visibleTexts, [])
+        XCTAssertFalse(client.canUndo, "not an undo step")
+        XCTAssertEqual(rejected.map(\.1), ["too-large"])
+        XCTAssertEqual(client.lastRejection?.reason, "too-large")
+
+        // The next op is unaffected, and nothing is resent on reconnect.
+        XCTAssertEqual(client.addStroke(pageId: page, stroke: stroke("S")), "dev:2")
+        socket.drop()
+        scheduler.advance(by: 0.5)
+        await client.openTask?.value
+        socket.receive(welcome())
+        XCTAssertEqual(sentOps().map(\.0), ["dev:2"])
+    }
+
+    func testServerRejectsAreReported() async {
+        await connected()
+        var reasons: [String] = []
+        client.onReject = { _, reason in reasons.append(reason) }
+        client.addStroke(pageId: page, stroke: stroke("A"))
+        client.addStroke(pageId: page, stroke: stroke("B"))
+        socket.receive(.reject(clientOpId: "dev:1", reason: "duplicate"))
+        socket.receive(.reject(clientOpId: "dev:2", reason: "drawing-locked"))
+        XCTAssertEqual(reasons, ["drawing-locked"], "a duplicate is not a refusal")
     }
 
     // MARK: Received presence
@@ -534,13 +604,23 @@ final class RoomClientTests: XCTestCase {
         socket.receive(.presence(from: from(), presence: ink("R1", [4, 5, 6, 7, 8, 9])))
         XCTAssertEqual(client.remoteInk["R1"]?.points.map(\.x), [1, 4, 7])
         XCTAssertEqual(client.remoteInk["R1"]?.connectionId, "c3")
-        socket.receive(.presence(from: from(), presence: ink("R1", [], done: true)))
+        // done: the preview stays for its stroke, and goes after 1.5 s if the
+        // stroke never comes (it was refused).
+        socket.receive(.presence(from: from(), presence: ink("R1", [10, 11, 12], done: true)))
+        XCTAssertEqual(client.remoteInk["R1"]?.points.map(\.x), [1, 4, 7, 10])
+        XCTAssertEqual(client.remoteInk["R1"]?.isFinished, true)
+        scheduler.advance(by: 1.4)
+        XCTAssertNotNil(client.remoteInk["R1"])
+        scheduler.advance(by: 0.1)
         XCTAssertNil(client.remoteInk["R1"])
 
-        // The committed stroke also removes a preview.
+        // Usually the committed stroke swaps the preview out first.
         socket.receive(.presence(from: from(), presence: ink("R2", [1, 2, 3])))
+        socket.receive(.presence(from: from(), presence: ink("R2", [], done: true)))
         socket.receive(.op(SequencedOp(seq: 1, author: "uid-ravi", clientOpId: "r:1", op: .strokeAdd(pageId: page, stroke: stroke("R2")))))
         XCTAssertNil(client.remoteInk["R2"])
+        XCTAssertEqual(visibleStrokeIds(), ["R2"])
+        scheduler.advance(by: 2)
 
         // A late preview for a committed stroke is ignored.
         socket.receive(.presence(from: from(), presence: ink("R2", [1, 2, 3])))

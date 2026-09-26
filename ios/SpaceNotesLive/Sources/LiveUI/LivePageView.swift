@@ -92,11 +92,17 @@ struct LivePageView: View {
             tools.streamer = nil
             return
         }
+        // PencilKit owns the gesture, so a stroke past 5,000 points is
+        // carried on as new strokes when it ends rather than mid-draw.
+        let id = tools.streamer?.liveId ?? LiveIDs.make()
+        let pieces = LivePencilKit.liveStroke(from: pkStroke, id: id).continuedAtMaximumPoints()
         if let streamer = tools.streamer {
-            streamer.finish(LivePencilKit.liveStroke(from: pkStroke, id: streamer.liveId).limitedToMaximumPoints())
+            streamer.finish(pieces[0])
         } else {
-            client.addStroke(pageId: page.id,
-                             stroke: LivePencilKit.liveStroke(from: pkStroke, id: LiveIDs.make()).limitedToMaximumPoints())
+            client.addStroke(pageId: page.id, stroke: pieces[0])
+        }
+        for piece in pieces.dropFirst() {
+            client.addStroke(pageId: page.id, stroke: piece)
         }
         tools.streamer = nil
     }

@@ -80,16 +80,32 @@ public struct LiveStroke: Codable, Hashable, Sendable, Identifiable {
     /// The highlighter is a marker drawn translucent.
     public var isHighlighter: Bool { inkType == .marker && color.a < 1 }
 
-    /// The same stroke with at most `maximum` points, keeping the first and
-    /// last and spacing the rest evenly. PencilKit stores fitted control
-    /// points rather than raw samples, so a real stroke rarely comes near the
-    /// protocol's limit; this keeps a very long one drawable instead of lost.
-    public func limitedToMaximumPoints(_ maximum: Int = 5000) -> LiveStroke {
-        guard points.count > maximum, maximum >= 2 else { return self }
-        var thinned = self
-        let last = points.count - 1
-        thinned.points = (0..<maximum).map { i in points[Int((Double(i) * Double(last) / Double(maximum - 1)).rounded())] }
-        return thinned
+    /// A stroke may hold 5,000 points (PROTOCOL.md). A longer one carries on
+    /// as new strokes, each starting from the last point of the one before,
+    /// as the web canvas does. The first keeps this stroke's id (the live-ink
+    /// preview's); each later one gets a new id and time offsets from zero.
+    public func continuedAtMaximumPoints(_ maximum: Int = 5000) -> [LiveStroke] {
+        guard points.count > maximum, maximum >= 2 else { return [self] }
+        var pieces: [LiveStroke] = []
+        var start = 0
+        while start < points.count - 1 || pieces.isEmpty {
+            let end = min(start + maximum, points.count)
+            var piece = self
+            if !pieces.isEmpty {
+                piece.id = LiveIDs.make()
+                piece.captureStamp = nil
+            }
+            let origin = points[start].timeOffset
+            piece.points = points[start..<end].map { point in
+                var shifted = point
+                shifted.timeOffset = point.timeOffset - origin
+                return shifted
+            }
+            piece.width = piece.points.reduce(0) { $0 + $1.width } / Double(piece.points.count)
+            pieces.append(piece)
+            start = end - 1
+        }
+        return pieces
     }
 }
 

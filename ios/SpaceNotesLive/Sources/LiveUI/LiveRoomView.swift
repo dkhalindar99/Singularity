@@ -21,6 +21,7 @@ public struct LiveRoomView: View {
     @State private var showingParticipants = false
     @State private var confirmingLeave = false
     @State private var finishing = false
+    @State private var refusal: String?
     @Environment(\.liveTheme) private var theme
 
     /// - Parameters:
@@ -79,6 +80,14 @@ public struct LiveRoomView: View {
             if status == .connected, currentPageId == nil {
                 currentPageId = client.state.hostPageId ?? client.state.pages.first?.id
                 if let currentPageId { client.sendView(pageId: currentPageId) }
+            }
+        }
+        .onChange(of: client.lastRejection) { _, rejection in
+            guard let rejection else { return }
+            refusal = refusalText(rejection.reason)
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if refusal == refusalText(rejection.reason) { refusal = nil }
             }
         }
         .onChange(of: client.state.hostPageId) { _, hostPage in
@@ -231,15 +240,28 @@ public struct LiveRoomView: View {
         return .blank
     }
 
-    @ViewBuilder
+    private func refusalText(_ reason: String) -> String {
+        switch reason {
+        case "drawing-locked": return "The host has locked writing, so that change was undone."
+        case "not-host": return "Only the host can do that."
+        case RoomClient.tooLarge: return "That was too large to share, so it was not added."
+        default: return "That change could not be shared."
+        }
+    }
+
     private var statusBanner: some View {
-        switch client.status {
-        case .reconnecting:
-            banner("Reconnecting… your writing is kept and will be sent.", systemImage: "wifi.exclamationmark")
-        case .connecting where !client.state.pages.isEmpty:
-            banner("Connecting…", systemImage: "antenna.radiowaves.left.and.right")
-        default:
-            EmptyView()
+        VStack(spacing: 6) {
+            switch client.status {
+            case .reconnecting:
+                banner("Reconnecting… your writing is kept and will be sent.", systemImage: "wifi.exclamationmark")
+            case .connecting where !client.state.pages.isEmpty:
+                banner("Connecting…", systemImage: "antenna.radiowaves.left.and.right")
+            default:
+                EmptyView()
+            }
+            if let refusal {
+                banner(refusal, systemImage: "exclamationmark.circle")
+            }
         }
     }
 
@@ -317,7 +339,7 @@ public struct LiveRoomView: View {
         // The host takes the server's copy (it may hold writing this device
         // never saw), unless this device still has writing to send.
         if client.isHost, client.pendingOps.isEmpty, let snapshot = try? await api.snapshot(roomId: client.roomId) {
-            state = snapshot
+            state = snapshot.state
         }
         if endForEveryone {
             client.endRoom()

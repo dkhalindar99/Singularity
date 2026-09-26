@@ -19,6 +19,13 @@ public struct RoomLookup: Codable, Hashable, Sendable {
     public var allowGuests: Bool
 }
 
+/// `GET /rooms/{roomId}/snapshot`.
+public struct RoomSnapshot: Codable, Hashable, Sendable {
+    public var room: RoomInfo
+    public var ended: Bool
+    public var state: RoomState
+}
+
 /// A LiveKit ticket for the room's video and voice.
 public struct VideoTicket: Codable, Hashable, Sendable {
     public var url: String
@@ -89,13 +96,10 @@ public final class LiveAPI: @unchecked Sendable {
     }
 
     /// Host only: the room as it is now, for saving back into the notebook.
-    /// PROTOCOL.md says the body is the room state; the server wraps it as
-    /// `{ room, ended, state }`. Both are read.
-    public func snapshot(roomId: String) async throws -> RoomState {
+    /// Host only: the room as it is now, for saving back into the notebook.
+    public func snapshot(roomId: String) async throws -> RoomSnapshot {
         let (data, _) = try await call("GET", "rooms/\(escaped(roomId))/snapshot")
-        struct Wrapped: Decodable { var state: RoomState }
-        if let wrapped = try? LiveJSON.decoder.decode(Wrapped.self, from: data) { return wrapped.state }
-        return try decode(RoomState.self, data)
+        return try decode(RoomSnapshot.self, data)
     }
 
     // MARK: Plumbing

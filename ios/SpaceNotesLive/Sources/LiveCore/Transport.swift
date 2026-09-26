@@ -10,9 +10,9 @@ import FoundationNetworking
 public enum TransportEvent: Sendable {
     case open
     case message(String)
-    /// `code` is the WebSocket close code when the server sent one. The room
-    /// server closes with 4000 (room-ended), 4001 (removed-by-host) and 4002
-    /// (an error, reason = its code), and `reason` then carries that word.
+    /// `code` is the WebSocket close code, when known, and `reason` the
+    /// server's close reason, or else a description of the failure. The room
+    /// server closes with its `removed` reason or `error` code as the reason.
     case closed(code: Int?, reason: String?)
 }
 

@@ -78,13 +78,11 @@ final class LiveAPITests: XCTestCase {
         XCTAssertEqual(recorder.requests.last?.url?.path, "/rooms/r1/assets/a1")
         XCTAssertEqual(recorder.requests.last?.value(forHTTPHeaderField: "Content-Type"), "image/png")
 
-        recorder.answer = (200, #"{"protocol":1,"seq":3,"drawPolicy":"everyone","penHolder":null,"hostPageId":null,"pages":[]}"#)
-        let state = try await api(recorder).snapshot(roomId: "r1")
-        XCTAssertEqual(state.seq, 3)
-
-        recorder.answer = (200, #"{"room":{"id":"r1"},"ended":false,"state":{"protocol":1,"seq":4,"drawPolicy":"everyone","penHolder":null,"hostPageId":null,"pages":[]}}"#)
-        let wrapped = try await api(recorder).snapshot(roomId: "r1")
-        XCTAssertEqual(wrapped.seq, 4)
+        recorder.answer = (200, #"{"room":{"id":"r1","code":"K7QM3X","title":"T","hostUid":"h"},"ended":true,"state":{"protocol":1,"seq":4,"drawPolicy":"everyone","penHolder":null,"hostPageId":null,"pages":[]}}"#)
+        let snapshot = try await api(recorder).snapshot(roomId: "r1")
+        XCTAssertEqual(snapshot.state.seq, 4)
+        XCTAssertTrue(snapshot.ended)
+        XCTAssertEqual(snapshot.room.code, "K7QM3X")
     }
 
     func testCodeAlphabet() {

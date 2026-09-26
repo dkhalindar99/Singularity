@@ -48,6 +48,8 @@ public final class RoomClient {
         public var color: LiveColor
         public var width: Double
         public var points: [PreviewPoint]
+        /// The sender has lifted the pen; the stroke itself should follow.
+        public var isFinished = false
         public var id: String { liveId }
     }
 
@@ -68,6 +70,30 @@ public final class RoomClient {
         /// find it.
         var sentIds: [String]
     }
+
+    /// An op the server refused, or one too large to send.
+    public struct Rejection: Hashable, Sendable {
+        public var clientOpId: String
+        public var reason: String
+    }
+
+    /// Under the server's 1 MiB frame, leaving room for the envelope. The
+    /// same figure as the web client.
+    public static let maximumOpBytes = 1000 * 1024
+    public static let tooLarge = "too-large"
+
+    /// `error` codes that end the session; every other code reconnects.
+    public static let terminalErrorCodes: Set<String> = [
+        "bad-hello", "no-such-room", "room-full", "guests-not-allowed", "protocol-mismatch",
+    ]
+
+    /// Close reasons after which reconnecting cannot help: the `removed`
+    /// reasons and the terminal error codes.
+    public static let terminalCloseReasons: Set<String> =
+        terminalErrorCodes.union([ServerMessage.roomEnded, ServerMessage.removedByHost])
+
+    /// A finished preview whose stroke has not arrived by then was refused.
+    public static let finishedPreviewLifetime: Double = 1.5
 
     /// Reconnect delays, in seconds: 0.5, 1, 2, 4, then every 8.
     public static let backoff: [Double] = [0.5, 1, 2, 4, 8]
@@ -93,6 +119,10 @@ public final class RoomClient {
 
     /// Called after any change, for hosts without Combine (Linux, tests).
     public var onChange: (() -> Void)?
+    /// Called when an op of this device's is refused (not for `duplicate`,
+    /// which is not a refusal), so the screen can say why.
+    public var onReject: ((_ clientOpId: String, _ reason: String) -> Void)?
+    public private(set) var lastRejection: Rejection? { didSet { changed() } }
 
     public var canUndo: Bool { !undoStack.isEmpty }
     public var canRedo: Bool { !redoStack.isEmpty }
@@ -136,7 +166,8 @@ public final class RoomClient {
                 deviceId: String,
                 tokenProvider: @escaping () async throws -> String,
                 transportFactory: @escaping @MainActor () -> WebSocketTransport = { URLSessionWebSocketTransport() },
-                scheduler: LiveScheduler? = nil) {
+                scheduler: LiveScheduler? = nil,
+                opCounterStart: Int? = nil) {
         self.serverURL = serverURL
         self.roomId = roomId
         self.name = name
@@ -144,6 +175,10 @@ public final class RoomClient {
         self.tokenProvider = tokenProvider
         self.transportFactory = transportFactory
         self.scheduler = scheduler ?? TaskScheduler()
+        // deviceId survives app launches, so the counter must never repeat:
+        // it starts from the clock in milliseconds, not from 1, or a
+        // relaunched app's first ops would be refused as duplicates.
+        opCounter = opCounterStart ?? Int(Date().timeIntervalSince1970 * 1000)
     }
 
     /// `wss://<server>/live`, from the server's https base URL.
@@ -242,11 +277,13 @@ public final class RoomClient {
         case .message(let text):
             guard let message = try? LiveJSON.decode(ServerMessage.self, from: text) else { return }
             handle(message)
-        case .closed(let code, let reason):
-            // The server says why it closed in the close frame too, so a
-            // `removed` or `error` frame lost just before the close (seen with
-            // Linux's libcurl WebSockets) still ends the session properly.
-            if let code, (4000..<5000).contains(code), let reason, !reason.isEmpty, reason != "rate-limited" {
+        case .closed(_, let reason):
+            // The server also puts the reason in the close frame, so a
+            // `removed` or `error` frame lost just before the close (Linux's
+            // libcurl WebSockets do lose it) still ends the session. The
+            // reason text is used, not the code: URLSession cannot represent
+            // the server's 4000-range codes.
+            if let reason, RoomClient.terminalCloseReasons.contains(reason) {
                 end(reason)
             } else {
                 connectionLost()
@@ -289,6 +326,10 @@ public final class RoomClient {
             recompute()
 
         case .reject(let clientOpId, let reason):
+            if reason != ServerMessage.rejectDuplicate {
+                lastRejection = Rejection(clientOpId: clientOpId, reason: reason)
+                onReject?(clientOpId, reason)
+            }
             pendingOps.removeAll { $0.clientOpId == clientOpId }
             if reason != ServerMessage.rejectDuplicate {
                 // The op never happened, so there is nothing to undo or redo.
@@ -313,10 +354,13 @@ public final class RoomClient {
             end(reason)
 
         case .error(let code, _):
-            if code == "rate-limited" {
-                connectionLost()
-            } else {
+            // Only these cannot be helped by trying again; anything else (an
+            // expired token, rate limits, a code this build does not know)
+            // reconnects with the growing backoff.
+            if RoomClient.terminalErrorCodes.contains(code) {
                 end(code)
+            } else {
+                connectionLost()
             }
 
         case .pong, .unknown:
@@ -327,10 +371,6 @@ public final class RoomClient {
     private func handlePresence(_ presence: Presence, from: PresenceSender) {
         switch presence {
         case .inkLive(let ink):
-            if ink.done {
-                remoteInk[ink.liveId] = nil
-                return
-            }
             // A committed stroke with this id is already on the page.
             if state.page(ink.pageId)?.strokes.contains(where: { $0.stroke.id == ink.liveId }) == true { return }
             var points: [PreviewPoint] = []
@@ -341,11 +381,21 @@ public final class RoomClient {
             }
             if var existing = remoteInk[ink.liveId] {
                 existing.points.append(contentsOf: points)
+                existing.isFinished = existing.isFinished || ink.done
                 remoteInk[ink.liveId] = existing
-            } else {
+            } else if !points.isEmpty {
                 remoteInk[ink.liveId] = RemoteInk(liveId: ink.liveId, connectionId: from.connectionId, uid: from.uid,
                                                   pageId: ink.pageId, ink: ink.ink, color: ink.color, width: ink.width,
-                                                  points: points)
+                                                  points: points, isFinished: ink.done)
+            }
+            if ink.done {
+                // The preview stays until its stroke.add swaps it out without
+                // a flicker. If that never comes, the stroke was refused.
+                let liveId = ink.liveId
+                scheduler.schedule(after: RoomClient.finishedPreviewLifetime) { [weak self] in
+                    guard let self, self.remoteInk[liveId]?.isFinished == true else { return }
+                    self.remoteInk[liveId] = nil
+                }
             }
 
         case .pointer(let pageId, let x, let y, let laser):
@@ -408,10 +458,19 @@ public final class RoomClient {
         return "\(deviceId):\(opCounter)"
     }
 
-    /// Queues an op, draws it at once, and sends it when connected.
+    /// Queues an op, draws it at once, and sends it when connected. Returns
+    /// nil for an op too large to send.
     @discardableResult
-    private func submit(_ op: Op) -> String {
+    private func submit(_ op: Op) -> String? {
         let clientOpId = nextClientOpId()
+        let size = (try? LiveJSON.encoder.encode(op).count) ?? 0
+        guard size <= RoomClient.maximumOpBytes else {
+            // The server would close the socket, and every resend after
+            // reconnecting would close it again. Refuse it here instead.
+            lastRejection = Rejection(clientOpId: clientOpId, reason: RoomClient.tooLarge)
+            onReject?(clientOpId, RoomClient.tooLarge)
+            return nil
+        }
         pendingOps.append(PendingOp(clientOpId: clientOpId, op: op))
         if status == .connected { send(.op(clientOpId: clientOpId, op: op)) }
         recompute()
@@ -420,9 +479,9 @@ public final class RoomClient {
 
     /// A new op of this person's own: records its undo pair and clears redo.
     @discardableResult
-    private func perform(_ op: Op) -> String {
+    private func perform(_ op: Op) -> String? {
         let pair = UndoInverse.pair(for: op, in: state)
-        let id = submit(op)
+        guard let id = submit(op) else { return nil }
         if let pair {
             undoStack.append(UndoEntry(pair: pair, sentIds: [id]))
             redoStack.removeAll()
@@ -452,7 +511,7 @@ public final class RoomClient {
 
     /// Adds a finished stroke as one `stroke.add`. A stroke over the
     /// protocol's 5,000 points is not sent (the server would refuse it); the
-    /// canvas thins its strokes first with `limitedToMaximumPoints()`.
+    /// canvas breaks long strokes up first with `continuedAtMaximumPoints()`.
     @discardableResult
     public func addStroke(pageId: String, stroke: LiveStroke) -> String? {
         guard stroke.points.count <= Permissions.maximumStrokePoints else { return nil }
@@ -478,7 +537,7 @@ public final class RoomClient {
     }
 
     @discardableResult
-    public func upsertText(pageId: String, text: LiveText) -> String {
+    public func upsertText(pageId: String, text: LiveText) -> String? {
         perform(.textUpsert(pageId: pageId, text: text))
     }
 
@@ -490,19 +549,19 @@ public final class RoomClient {
 
     /// Host only. Not undoable.
     @discardableResult
-    public func addPage(_ page: LivePageSpec, after afterPageId: String?) -> String {
+    public func addPage(_ page: LivePageSpec, after afterPageId: String?) -> String? {
         submit(.pageAdd(page: page, afterPageId: afterPageId))
     }
 
     /// Host only. `penHolder` is used with `.pen`.
     @discardableResult
-    public func setPolicy(_ policy: DrawPolicy, penHolder: String? = nil) -> String {
+    public func setPolicy(_ policy: DrawPolicy, penHolder: String? = nil) -> String? {
         submit(.roomPolicy(drawPolicy: policy.rawValue, penHolder: policy == .pen ? penHolder : nil))
     }
 
     /// Host only: the page "Follow host" follows.
     @discardableResult
-    public func setHostPage(_ pageId: String) -> String {
+    public func setHostPage(_ pageId: String) -> String? {
         submit(.hostPage(pageId: pageId))
     }
 
@@ -511,15 +570,18 @@ public final class RoomClient {
     /// Takes back this person's own last change by sending its inverse.
     public func undo() {
         guard var entry = undoStack.popLast() else { return }
-        entry.sentIds = entry.pair.undo.map { submit($0) }
-        redoStack.append(entry)
+        let ids = entry.pair.undo.map { submit($0) }
+        entry.sentIds = ids.compactMap { $0 }
+        // An undo too large to send drops the entry, as a reject would.
+        if !ids.contains(nil) { redoStack.append(entry) }
         changed()
     }
 
     public func redo() {
         guard var entry = redoStack.popLast() else { return }
-        entry.sentIds = entry.pair.redo.map { submit($0) }
-        undoStack.append(entry)
+        let ids = entry.pair.redo.map { submit($0) }
+        entry.sentIds = ids.compactMap { $0 }
+        if !ids.contains(nil) { undoStack.append(entry) }
         changed()
     }
 
