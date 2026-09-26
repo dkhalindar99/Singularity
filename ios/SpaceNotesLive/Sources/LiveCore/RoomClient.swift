@@ -98,7 +98,13 @@ public final class RoomClient {
     /// Reconnect delays, in seconds: 0.5, 1, 2, 4, then every 8.
     public static let backoff: [Double] = [0.5, 1, 2, 4, 8]
     public static let pingInterval: Double = 20
-    public static let liveInkInterval: Double = 0.03
+    /// One screen frame: a friend sees the line grow as it is drawn.
+    public static let liveInkInterval: Double = 0.016
+    /// A hovering pointer, at most this often, and only after moving 1 pt.
+    public static let pointerInterval: Double = 0.1
+    public static let pointerMinimumMove: Double = 1
+    /// The laser, at most this often.
+    public static let laserInterval: Double = 0.033
 
     // MARK: Observable state
 
@@ -109,10 +115,18 @@ public final class RoomClient {
     public private(set) var members: [Member] = [] { didSet { changed() } }
     public private(set) var me: You?
     public private(set) var room: RoomInfo?
+    /// Fast-changing presence (ink being drawn, pointers) lives in its own
+    /// observable object, so a friend's stroke redraws only the overlay that
+    /// shows it, not the whole page.
+    public let presence = LivePresence()
     /// Strokes others are drawing, keyed by their future stroke id.
-    public private(set) var remoteInk: [String: RemoteInk] = [:] { didSet { changed() } }
+    public var remoteInk: [String: RemoteInk] { presence.remoteInk }
     /// Pointers by connectionId.
-    public private(set) var pointers: [String: RemotePointer] = [:] { didSet { changed() } }
+    public var pointers: [String: RemotePointer] { presence.pointers }
+    /// Scheduler time of the last ink or text seen in the room: a sequenced
+    /// stroke, text or move op, or someone's ink.live. Voice uses it to tell
+    /// a quiet room from a busy one.
+    public private(set) var lastNotebookActivityAt: Double = 0
     /// The page each connection is looking at, by connectionId.
     public private(set) var views: [String: String] = [:] { didSet { changed() } }
     public private(set) var handRaised = false { didSet { changed() } }
@@ -156,6 +170,10 @@ public final class RoomClient {
     private var pingTimer: LiveCancellable?
     private var opCounter = 0
     private var undoStack: [UndoEntry] = []
+    private var lastPointer: (pointer: OutgoingPointer, at: Double)?
+    private var pendingPointer: OutgoingPointer?
+    private var pointerTimer: LiveCancellable?
+    private var activeStrokes = 0
     private var redoStack: [UndoEntry] = []
     /// The token fetch for the current attempt; tests await it.
     var openTask: Task<Void, Never>?
@@ -175,6 +193,7 @@ public final class RoomClient {
         self.tokenProvider = tokenProvider
         self.transportFactory = transportFactory
         self.scheduler = scheduler ?? TaskScheduler()
+        lastNotebookActivityAt = self.scheduler.now
         // deviceId survives app launches, so the counter must never repeat:
         // it starts from the clock in milliseconds, not from 1, or a
         // relaunched app's first ops would be refused as duplicates.
@@ -317,11 +336,17 @@ public final class RoomClient {
                 return
             }
             confirmed = Reducer.apply(confirmed, sequenced)
+            switch sequenced.op {
+            case .strokeAdd, .strokeErase, .strokeRestore, .textUpsert, .textErase, .itemsMove:
+                lastNotebookActivityAt = scheduler.now
+            default:
+                break
+            }
             if let clientOpId = sequenced.clientOpId {
                 pendingOps.removeAll { $0.clientOpId == clientOpId }
             }
             if case .strokeAdd(_, let stroke) = sequenced.op, remoteInk[stroke.id] != nil {
-                remoteInk[stroke.id] = nil
+                presence.remoteInk[stroke.id] = nil
             }
             recompute()
 
@@ -371,6 +396,7 @@ public final class RoomClient {
     private func handlePresence(_ presence: Presence, from: PresenceSender) {
         switch presence {
         case .inkLive(let ink):
+            lastNotebookActivityAt = scheduler.now
             // A committed stroke with this id is already on the page.
             if state.page(ink.pageId)?.strokes.contains(where: { $0.stroke.id == ink.liveId }) == true { return }
             var points: [PreviewPoint] = []
@@ -382,9 +408,9 @@ public final class RoomClient {
             if var existing = remoteInk[ink.liveId] {
                 existing.points.append(contentsOf: points)
                 existing.isFinished = existing.isFinished || ink.done
-                remoteInk[ink.liveId] = existing
+                self.presence.remoteInk[ink.liveId] = existing
             } else if !points.isEmpty {
-                remoteInk[ink.liveId] = RemoteInk(liveId: ink.liveId, connectionId: from.connectionId, uid: from.uid,
+                self.presence.remoteInk[ink.liveId] = RemoteInk(liveId: ink.liveId, connectionId: from.connectionId, uid: from.uid,
                                                   pageId: ink.pageId, ink: ink.ink, color: ink.color, width: ink.width,
                                                   points: points, isFinished: ink.done)
             }
@@ -394,15 +420,15 @@ public final class RoomClient {
                 let liveId = ink.liveId
                 scheduler.schedule(after: RoomClient.finishedPreviewLifetime) { [weak self] in
                     guard let self, self.remoteInk[liveId]?.isFinished == true else { return }
-                    self.remoteInk[liveId] = nil
+                    self.presence.remoteInk[liveId] = nil
                 }
             }
 
         case .pointer(let pageId, let x, let y, let laser):
-            pointers[from.connectionId] = RemotePointer(connectionId: from.connectionId, uid: from.uid, pageId: pageId,
+            self.presence.pointers[from.connectionId] = RemotePointer(connectionId: from.connectionId, uid: from.uid, pageId: pageId,
                                                         x: x, y: y, laser: laser, updatedAt: scheduler.now)
         case .pointerHide:
-            pointers[from.connectionId] = nil
+            self.presence.pointers[from.connectionId] = nil
 
         case .view(let pageId):
             views[from.connectionId] = pageId
@@ -424,16 +450,16 @@ public final class RoomClient {
     private func pruneStalePresence() {
         let present = Set(members.map(\.connectionId))
         let ink = remoteInk.filter { present.contains($0.value.connectionId) }
-        if ink.count != remoteInk.count { remoteInk = ink }
+        if ink.count != remoteInk.count { presence.remoteInk = ink }
         let pointers = self.pointers.filter { present.contains($0.key) }
-        if pointers.count != self.pointers.count { self.pointers = pointers }
+        if pointers.count != self.pointers.count { presence.pointers = pointers }
         let views = self.views.filter { present.contains($0.key) }
         if views.count != self.views.count { self.views = views }
     }
 
     private func clearPresence() {
-        remoteInk = [:]
-        pointers = [:]
+        presence.remoteInk = [:]
+        presence.pointers = [:]
         views = [:]
     }
 
@@ -591,7 +617,8 @@ public final class RoomClient {
     /// finished stroke (it takes the streamer's id) or `cancel`.
     public func beginLiveInk(pageId: String, ink: LiveInk, color: LiveColor, width: Double,
                              strokeId: String = LiveIDs.make()) -> LiveInkStreamer {
-        LiveInkStreamer(client: self, pageId: pageId, liveId: strokeId, ink: ink.rawValue, color: color, width: width)
+        strokeBegan()
+        return LiveInkStreamer(client: self, pageId: pageId, liveId: strokeId, ink: ink.rawValue, color: color, width: width)
     }
 
     func sendPresence(_ presence: Presence) {
@@ -599,12 +626,70 @@ public final class RoomClient {
         send(.presence(presence))
     }
 
+    /// Where this person's pen or finger is. Throttled: a hovering pointer
+    /// at most every 100 ms and only after a move of 1 pt, the laser at most
+    /// every 33 ms, the latest position sent when the wait is over. Nothing
+    /// is sent while a stroke is being drawn: its ink.live shows the pen.
     public func sendPointer(pageId: String, x: Double, y: Double, laser: Bool) {
-        sendPresence(.pointer(pageId: pageId, x: LiveInkStreamer.round(x), y: LiveInkStreamer.round(y), laser: laser))
+        guard status == .connected, activeStrokes == 0 else { return }
+        let next = OutgoingPointer(pageId: pageId, x: LiveInkStreamer.round(x), y: LiveInkStreamer.round(y), laser: laser)
+        let now = scheduler.now
+        if let last = lastPointer {
+            if !laser, !last.pointer.laser, last.pointer.pageId == pageId,
+               hypot(next.x - last.pointer.x, next.y - last.pointer.y) < RoomClient.pointerMinimumMove {
+                pendingPointer = nil
+                return
+            }
+            let interval = laser ? RoomClient.laserInterval : RoomClient.pointerInterval
+            if now - last.at < interval {
+                pendingPointer = next
+                if pointerTimer == nil {
+                    pointerTimer = scheduler.schedule(after: last.at + interval - now) { [weak self] in
+                        guard let self else { return }
+                        self.pointerTimer = nil
+                        if let pending = self.pendingPointer, self.activeStrokes == 0 { self.emitPointer(pending) }
+                        self.pendingPointer = nil
+                    }
+                }
+                return
+            }
+        }
+        emitPointer(next)
     }
 
     public func hidePointer() {
+        clearPendingPointer()
+        guard lastPointer != nil else { return }
+        lastPointer = nil
         sendPresence(.pointerHide)
+    }
+
+    private struct OutgoingPointer {
+        var pageId: String
+        var x: Double
+        var y: Double
+        var laser: Bool
+    }
+
+    private func emitPointer(_ pointer: OutgoingPointer) {
+        lastPointer = (pointer, scheduler.now)
+        sendPresence(.pointer(pageId: pointer.pageId, x: pointer.x, y: pointer.y, laser: pointer.laser))
+    }
+
+    private func clearPendingPointer() {
+        pointerTimer?.cancel()
+        pointerTimer = nil
+        pendingPointer = nil
+    }
+
+    /// A stroke has started: no pointer while it is drawn.
+    func strokeBegan() {
+        activeStrokes += 1
+        hidePointer()
+    }
+
+    func strokeEnded() {
+        activeStrokes = max(0, activeStrokes - 1)
     }
 
     public func sendView(pageId: String) {
@@ -638,7 +723,29 @@ public final class RoomClient {
 
 #if canImport(Combine)
 extension RoomClient: ObservableObject {}
+extension LivePresence: ObservableObject {}
 #endif
+
+/// Others' strokes in progress and their pointers. Changes many times a
+/// second while someone draws, so it is observed on its own.
+@MainActor
+public final class LivePresence {
+    /// Strokes others are drawing, keyed by their future stroke id.
+    public internal(set) var remoteInk: [String: RoomClient.RemoteInk] = [:] { didSet { changed() } }
+    /// Pointers by connectionId.
+    public internal(set) var pointers: [String: RoomClient.RemotePointer] = [:] { didSet { changed() } }
+    /// Called after any change, for hosts without Combine.
+    public var onChange: (() -> Void)?
+
+    nonisolated init() {}
+
+    private func changed() {
+        #if canImport(Combine)
+        objectWillChange.send()
+        #endif
+        onChange?()
+    }
+}
 
 /// Streams one stroke's points while it is drawn, at most every 30 ms.
 @MainActor
@@ -713,6 +820,7 @@ public final class LiveInkStreamer {
     }
 
     private func end(_ client: RoomClient) {
+        client.strokeEnded()
         flushTimer?.cancel()
         flushTimer = nil
         client.sendPresence(.inkLive(message(done: true)))

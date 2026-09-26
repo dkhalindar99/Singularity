@@ -10,7 +10,8 @@ import kotlinx.coroutines.Job
 /**
  * Streams one stroke while it is being drawn, so everyone else sees it grow.
  *
- * Points are batched into `ink.live` presence at most every 30 ms; each
+ * The first point goes out at once as `ink.live` presence, then batches at
+ * most every 16 ms (one screen frame); each
  * message holds only the points since the last one, rounded to 0.1 pt, which
  * is finer than any screen shows. [finish] sends the rest with `done: true`
  * and then commits the stroke with `stroke.add` under the same id, so a
@@ -60,6 +61,7 @@ public class LiveInkStreamer internal constructor(
     public fun finish(): LiveStroke? = client.locked {
         if (closed) return@locked null
         closed = true
+        client.strokeEnded()
         flushJob?.cancel()
         flushLocked(done = true)
         if (points.isEmpty()) return@locked null
@@ -82,6 +84,7 @@ public class LiveInkStreamer internal constructor(
         client.locked {
             if (closed) return@locked
             closed = true
+            client.strokeEnded()
             flushJob?.cancel()
             unsent.clear()
             flushLocked(done = true)

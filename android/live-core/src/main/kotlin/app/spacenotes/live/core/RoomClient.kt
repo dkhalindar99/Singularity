@@ -117,6 +117,7 @@ public class RoomClient(
     private val _pointers = MutableStateFlow<Map<String, RemotePointer>>(emptyMap())
     private val _views = MutableStateFlow<Map<String, String>>(emptyMap())
     private val _events = MutableSharedFlow<RoomEvent>(extraBufferCapacity = 64)
+    private val _inkActivity = MutableStateFlow(0L)
 
     public val status: StateFlow<RoomStatus> = _status.asStateFlow()
 
@@ -143,6 +144,12 @@ public class RoomClient(
     /** The page each other connection is looking at, by connection id. */
     public val views: StateFlow<Map<String, String>> = _views.asStateFlow()
     public val events: SharedFlow<RoomEvent> = _events.asSharedFlow()
+
+    /**
+     * Goes up whenever anyone draws or writes: an ink or text op, or live ink.
+     * [VoiceIdlePolicy] watches it, because any ink keeps a room awake.
+     */
+    public val inkActivity: StateFlow<Long> = _inkActivity.asStateFlow()
 
     private class Pending(val clientOpId: String, val op: Op)
 
@@ -171,7 +178,8 @@ public class RoomClient(
     private val inkExpiry = HashMap<String, Job>()
     private var myView: String? = null
     private var myHand = false
-    private val pointerThrottle = Throttle<Presence>(PRESENCE_INTERVAL_MS) { presence -> sendPresenceLocked(presence) }
+    private val pointerThrottle = PointerThrottle()
+    private var strokesInProgress = 0
 
     // ---- Connection ----------------------------------------------------------
 
@@ -323,6 +331,7 @@ public class RoomClient(
         }
         val op = frame.op
         if (op is Op.StrokeAdd) removeLiveInkLocked(op.stroke.id)
+        if (op.kind in INK_KINDS) _inkActivity.value++
         recomputeLocked()
     }
 
@@ -380,6 +389,7 @@ public class RoomClient(
     }
 
     private fun inkLiveLocked(from: PresenceSender, presence: Presence.InkLive) {
+        _inkActivity.value++
         val existing = _liveInk.value[presence.liveId]
         if (existing == null && _state.value.page(presence.pageId)?.strokes?.any { it.stroke.id == presence.liveId } == true) {
             return // the committed stroke got here first
@@ -586,15 +596,32 @@ public class RoomClient(
         color: LiveColor,
         width: Double,
         id: String = java.util.UUID.randomUUID().toString().uppercase(),
-    ): LiveInkStreamer = LiveInkStreamer(this, pageId, id, ink, color, width)
+    ): LiveInkStreamer = synchronized(lock) {
+        // While a stroke is drawn its `ink.live` already shows where the pen
+        // is, so no pointer goes out on top of it.
+        strokesInProgress++
+        pointerThrottle.cancel()
+        LiveInkStreamer(this, pageId, id, ink, color, width)
+    }
 
+    internal fun strokeEnded() {
+        synchronized(lock) { if (strokesInProgress > 0) strokesInProgress-- }
+    }
+
+    /**
+     * Where this person's pen or finger is. Throttled (see [PointerThrottle])
+     * and not sent at all while they are drawing a stroke.
+     */
     public fun sendPointer(pageId: String, x: Double, y: Double, laser: Boolean = false) {
-        synchronized(lock) { pointerThrottle.offer(Presence.Pointer(pageId, round1(x), round1(y), laser)) }
+        synchronized(lock) {
+            if (strokesInProgress > 0) return
+            pointerThrottle.offer(Presence.Pointer(pageId, round1(x), round1(y), laser))
+        }
     }
 
     public fun hidePointer() {
         synchronized(lock) {
-            pointerThrottle.cancel()
+            pointerThrottle.forget()
             sendPresenceLocked(Presence.PointerHide)
         }
     }
@@ -646,34 +673,59 @@ public class RoomClient(
 
     internal fun <T> locked(block: () -> T): T = synchronized(lock, block)
 
-    /** Latest-value throttle for pointer updates. Runs under [lock]. */
-    private inner class Throttle<T : Any>(private val intervalMs: Long, private val send: (T) -> Unit) {
-        private var lastSent: Long? = null
-        private var waiting: T? = null
+    /**
+     * Pointer updates (PROTOCOL.md, `pointer`): a hovering pen at most every
+     * 100 ms, the laser at most every 33 ms, and only after a move of 1 pt or
+     * more. The latest position wins; a held-back one goes out when its time
+     * comes. Runs under [lock].
+     */
+    private inner class PointerThrottle {
+        private var lastSentAt: Long? = null
+        private var lastSent: Presence.Pointer? = null
+        private var waiting: Presence.Pointer? = null
         private var job: Job? = null
 
-        fun offer(value: T) {
-            val now = clock()
-            val last = lastSent
-            if (job == null && (last == null || now - last >= intervalMs)) {
-                lastSent = now
-                send(value)
+        fun offer(pointer: Presence.Pointer) {
+            val previous = lastSent
+            if (previous != null && previous.pageId == pointer.pageId && previous.laser == pointer.laser &&
+                kotlin.math.hypot(previous.x - pointer.x, previous.y - pointer.y) < POINTER_MIN_MOVE
+            ) {
+                waiting = null
                 return
             }
-            waiting = value
+            val interval = if (pointer.laser) LASER_INTERVAL_MS else POINTER_INTERVAL_MS
+            val now = clock()
+            val last = lastSentAt
+            if (job == null && (last == null || now - last >= interval)) {
+                sendNow(pointer)
+                return
+            }
+            waiting = pointer
             if (job == null) {
-                job = launchDelayed((last ?: now) + intervalMs - now) {
+                job = launchDelayed((last ?: now) + interval - now) {
                     job = null
-                    waiting?.let { lastSent = clock(); send(it) }
+                    waiting?.let(::sendNow)
                     waiting = null
                 }
             }
+        }
+
+        private fun sendNow(pointer: Presence.Pointer) {
+            lastSentAt = clock()
+            lastSent = pointer
+            sendPresenceLocked(pointer)
         }
 
         fun cancel() {
             job?.cancel()
             job = null
             waiting = null
+        }
+
+        /** After `pointer.hide` the next pointer goes out whatever its distance. */
+        fun forget() {
+            cancel()
+            lastSent = null
         }
     }
 
@@ -682,8 +734,23 @@ public class RoomClient(
         public val BACKOFF_MS: List<Long> = listOf(500, 1000, 2000, 4000, 8000)
         public const val PING_INTERVAL_MS: Long = 20_000
 
-        /** Live ink and pointers go out at most this often. */
-        public const val PRESENCE_INTERVAL_MS: Long = 30
+        /** Ops that count as someone drawing or writing. */
+        private val INK_KINDS = setOf(
+            Op.StrokeAdd.KIND, Op.StrokeErase.KIND, Op.StrokeRestore.KIND,
+            Op.TextUpsert.KIND, Op.TextErase.KIND, Op.ItemsMove.KIND,
+        )
+
+        /** `ink.live` batches go out at most this often: one screen frame. */
+        public const val PRESENCE_INTERVAL_MS: Long = 16
+
+        /** A hovering pen's pointer, at most this often. */
+        public const val POINTER_INTERVAL_MS: Long = 100
+
+        /** The laser pointer, at most this often. */
+        public const val LASER_INTERVAL_MS: Long = 33
+
+        /** A pointer that moved less than this (in points) is not sent again. */
+        public const val POINTER_MIN_MOVE: Double = 1.0
         /**
          * The largest op frame this client sends: a little under the server's
          * 1 MiB, which a full 5,000-point stroke always fits in.
