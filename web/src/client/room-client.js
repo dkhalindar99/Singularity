@@ -18,6 +18,7 @@ const PING_MS = 20_000;
 const POINTER_TTL_MS = 5000;
 const DONE_PREVIEW_TTL_MS = 1500;
 const FATAL_ERRORS = new Set(["bad-hello", "no-such-room", "room-full", "guests-not-allowed", "protocol-mismatch"]);
+const ENDING_REASONS = new Set([...FATAL_ERRORS, "room-ended", "removed-by-host"]);
 const MAX_OP_BYTES = 1000 * 1024; // under the server's 1 MiB frame, leaving room for the envelope
 
 export class RoomClient extends EventTarget {
@@ -98,10 +99,12 @@ export class RoomClient extends EventTarget {
       }
       this.#receive(message);
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (this.socket !== socket) return;
       this.socket = null;
       this.timers.clearInterval(this.pingTimer);
+      // The last frame before a close can be lost; the close reason repeats it.
+      if (ENDING_REASONS.has(event?.reason)) return this.#end(event.reason);
       if (this.status !== "ended") this.#retry();
     };
     socket.onerror = () => {};

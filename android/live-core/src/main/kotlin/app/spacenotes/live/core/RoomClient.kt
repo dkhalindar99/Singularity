@@ -226,7 +226,9 @@ public class RoomClient(
         override fun onClosed(code: Int, reason: String) {
             synchronized(lock) {
                 if (gen != generation || ended) return
-                connectionLostLocked()
+                // The last frame before a close can be lost; the close reason
+                // repeats it (PROTOCOL.md, after `removed` or `error`).
+                if (reason in ENDING_REASONS) endLocked(reason) else connectionLostLocked()
             }
         }
     }
@@ -698,6 +700,9 @@ public class RoomClient(
             ErrorCode.GUESTS_NOT_ALLOWED,
             ErrorCode.PROTOCOL_MISMATCH,
         )
+
+        /** Close reasons that end the session just as the frame they repeat would. */
+        internal val ENDING_REASONS: Set<String> = FATAL_ERRORS + setOf("room-ended", "removed-by-host")
 
         /** `https://host` → `wss://host/live`; a URL already ending in /live is kept. */
         public fun liveSocketUrl(serverUrl: String): String {
