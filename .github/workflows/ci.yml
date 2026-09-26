@@ -1,0 +1,72 @@
+# Every platform against the same protocol fixtures, on every push.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: Server and web (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fixtures are up to date
+        run: |
+          node fixtures/tools/make-fixtures.mjs
+          git diff --exit-code fixtures/
+      - name: Server tests
+        run: npm test
+        working-directory: server
+      - name: Web tests (fixtures, and the room client against the real server)
+        run: npm test
+        working-directory: web
+
+  swift-linux:
+    name: LiveCore (Swift on Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.1-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift test
+        run: swift test
+        working-directory: ios/SpaceNotesLive
+
+  ios:
+    name: iPad packages (Xcode)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: LiveCore tests on macOS
+        run: swift test
+        working-directory: ios/SpaceNotesLive
+      # LiveUI (SwiftUI + PencilKit) and the LiveKit video package only exist
+      # on iOS; this is the first place they are compiled for real.
+      - name: Build LiveUI for iOS
+        run: xcodebuild -scheme LiveUI -destination 'generic/platform=iOS Simulator' -skipPackagePluginValidation build CODE_SIGNING_ALLOWED=NO
+        working-directory: ios/SpaceNotesLive
+      - name: Build SpaceNotesLiveVideo for iOS
+        run: xcodebuild -scheme LiveVideo -destination 'generic/platform=iOS Simulator' -skipPackagePluginValidation build CODE_SIGNING_ALLOWED=NO
+        working-directory: ios/SpaceNotesLiveVideo
+
+  android:
+    name: Android modules (Gradle)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - name: Android platform 37
+        run: sdkmanager "platforms;android-37" "build-tools;37.0.0"
+      - name: Test and build
+        run: ./gradlew :live-core:test :live-ui:testDebugUnitTest :live-ui:assembleDebug :live-video:assembleDebug :live-ui:lintDebug :live-video:lintDebug
+        working-directory: android
