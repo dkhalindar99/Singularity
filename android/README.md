@@ -12,6 +12,7 @@ executable form, and the tests here read those files from disk.
 |---|---|---|
 | `live-core` | Kotlin/JVM, no Android | Protocol types (JSON-identical to the notebook's `PortableStroke`), the reducer, permissions, `RoomClient` (WebSocket, optimistic ops, reconnect, undo/redo, presence), `LiveInkStreamer`, `LiveApi` (HTTP), and eraser/fit geometry. kotlinx.serialization, kotlinx.coroutines, OkHttp. |
 | `live-ui` | Android library, Compose + Material 3, minSdk 26 | `LiveRoomScreen` (participant tiles, the shared page, toolbar, page navigation, Follow host, people sheet with host controls, raise hand, leave/end), `LivePageCanvas`, `LiveLobby` (join by code, host this notebook), `LiveTheme`, and the seams `LiveVoiceProvider` and `LiveNotebookSource`. Does not depend on LiveKit. |
+| `live-demo` | Android app | "SpaceNotes Live Demo" (`app.spacenotes.live.demo`), for trying the room on a real tablet against a development server: server address and name, then the lobby (host 3 blank lined pages, or join by code) and the room, with voice when the server has LiveKit. Dev tokens only (`dev:<uid>:<name>`), no Firebase; plain `http://` is allowed in the debug build only. |
 | `live-voice` | Android library | `LiveKitVoiceProvider`, the `LiveVoiceProvider` over LiveKit's official Android SDK (`io.livekit:livekit-android` 2.29.0, Apache 2.0): voice only, microphone on at the start when allowed, mute, who is speaking. Never publishes a camera (the server's ticket allows only a microphone), and its manifest removes the camera and screen-sharing permissions LiveKit's own manifest asks for. |
 
 Versions follow the notebook's own catalogue (`notebook/android/gradle/libs.versions.toml`):
@@ -78,6 +79,47 @@ What `live-core`'s tests cover:
   LIVE_SERVER_URL=http://127.0.0.1:8792 ./gradlew :live-core:test
   ```
 
+## How to try it on your Android tablet
+
+The demo app talks to a room server running on your Mac, over your home Wi-Fi.
+
+1. **Start the room server on the Mac.** In the repository:
+   `cd server && npm run dev`. It listens on port 8080 and accepts the demo's
+   dev sign-in. If macOS asks whether Node may accept incoming connections,
+   say Allow. (Voice needs a LiveKit server too — see the top-level
+   `CLAUDE.md`, "Voice locally". For a tablet, run LiveKit bound to the Wi-Fi
+   rather than `127.0.0.1`, e.g. `livekit-server --dev --bind 0.0.0.0
+   --node-ip <Mac's address>`, and start the room server with
+   `LIVEKIT_URL=ws://<Mac's address>:7880`, because the tablet is handed that
+   address. Without LiveKit the room works with ink only.)
+2. **Find the Mac's Wi-Fi address.** In Terminal: `ipconfig getifaddr en0`.
+   It looks like `192.168.1.23`. The tablet must be on the same Wi-Fi.
+3. **Get the app (APK).** Either build it:
+   `cd android && ANDROID_HOME=<your Android SDK> ./gradlew :live-demo:assembleDebug`,
+   which writes `android/live-demo/build/outputs/apk/debug/live-demo-debug.apk`;
+   or download `SpaceNotesLiveDemo-debug-apk` from the latest CI run on
+   GitHub (Actions → the run → Artifacts) and unzip it.
+4. **Copy the APK to the tablet** (USB, Google Drive, or email to yourself)
+   and open it in the tablet's Files app.
+5. **Allow installing from this source.** Android asks the first time: tap
+   Settings, turn on "Allow from this source" for the app you opened it
+   with, go back, and tap Install. If an older copy was installed from a
+   different build, uninstall it first (each machine signs debug builds with
+   its own key, and Android refuses to mix them).
+6. **Open "SpaceNotes Live Demo".** Enter the server address as
+   `http://` + the Mac's address + `:8080`, for example
+   `http://192.168.1.23:8080`, and your name. Tap Continue. Both are
+   remembered.
+7. **Start a room** (three blank lined pages) or **join one** with the
+   six-character code shown in another device's room header. Allow the
+   microphone when asked if you want to talk.
+8. To try it with two people, open the same server in a browser on the Mac
+   (`http://localhost:8080`) or install the app on a second device.
+
+The demo signs in with dev tokens, which only a server started with
+`LIVE_DEV_AUTH=1` accepts. It is for testing at home, never for a real
+server.
+
 ## Embedding in the notebook app
 
 1. Put this directory next to the notebook (or vendor it) and include the
@@ -130,8 +172,10 @@ Built and tested on Linux with JDK 21, Gradle 9.6.0 and Android SDK platform
   failure. It found, and now guards, a race where `Connected` was
   published a moment before the welcome's state.
 - `./gradlew :live-ui:testDebugUnitTest` — passes (room codes, colours).
-- `./gradlew :live-ui:assembleDebug :live-voice:assembleDebug` — both AARs
-  build with no compiler warnings; `lintDebug` reports no issues in either.
+- `./gradlew :live-ui:assembleDebug :live-voice:assembleDebug :live-demo:assembleDebug`
+  — both AARs and the demo APK (debug-signed, minSdk 26, no camera
+  permission in it) build with no compiler warnings; `lintDebug` reports no
+  issues in any of the three.
 
 Not verified:
 
