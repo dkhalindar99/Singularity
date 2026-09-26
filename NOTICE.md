@@ -10,7 +10,7 @@ modules and the browser's own APIs. Shipped third-party code:
 
 | Code | Version | Licence | Where | Why |
 |---|---|---|---|---|
-| LiveKit JavaScript client (`livekit-client`), Copyright LiveKit, Inc. | 2.22.3 | Apache License 2.0 — full text in `web/vendor/livekit-client/LICENSE` | `web/vendor/livekit-client/` (the published ESM build, unmodified) | Voice and video in the web app |
+| LiveKit JavaScript client (`livekit-client`), Copyright LiveKit, Inc. | 2.22.3 | Apache License 2.0 — full text in `web/vendor/livekit-client/LICENSE` | `web/vendor/livekit-client/` (the published ESM build, unmodified) | Voice in the web app |
 
 The iPad and Android packages depend on LiveKit's official SDKs (Apache-2.0)
 through their package managers; see `ios/README.md` and `android/README.md`
@@ -24,7 +24,7 @@ none may be: see docs/research.
 
 | Service | Used for | Where configured |
 |---|---|---|
-| LiveKit Cloud, or a self-hosted LiveKit server | Voice and video | Server: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` |
+| LiveKit Cloud, or a self-hosted LiveKit server | Voice (microphone only) | Server: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` |
 | Firebase Authentication | Who is who | Server: `FIREBASE_PROJECT_ID`; web: `FIREBASE_WEB_API_KEY` |
 | Google Cloud Storage | Keeping rooms across restarts | Server: `LIVE_BUCKET` |
 

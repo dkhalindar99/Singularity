@@ -9,7 +9,14 @@ identifiers or its copy (the licence headers are the one place it belongs).
 A Zoom-like study room around one shared notebook. A host opens a room with
 their notebook's pages; friends join by a six-character code or a link, from
 iPad, Android or the web; everyone sees the same page, can write on it, and
-sees ink while it is being drawn. Voice by default, cameras optional.
+sees ink while it is being drawn, and everyone can talk.
+
+**Ink and voice only — no cameras** (the owner's decision, 2026-09-26, for
+cost and India's DPDP rules). It is enforced by the server, not only hidden
+in the apps: the LiveKit ticket carries `canPublishSources: ["microphone"]`,
+so LiveKit refuses a camera even from a modified client (tested:
+`web/e2e/voice-call.mjs`, "insufficient permissions"). Don't add video
+without the owner asking.
 
 It is a **plugin**, built here and vendored into the SpaceNotes notebook app
 (`github.com/dkhalindar99/notebook`) the way TeachDraw is
@@ -19,8 +26,8 @@ notebook's copy.
 The research behind every choice: `docs/research/Shared live notebook sessions.md`
 (with its notes). In short: a server-ordered op log, not a CRDT (no usable
 Kotlin CRDT; a CRDT would displace `PortableStroke` as the source of truth);
-LiveKit for voice and video (Apache-2.0, Swift/Kotlin/JS SDKs, India region,
-cheapest per minute); Firestore is wrong for ink (cost and write limits).
+LiveKit for voice (Apache-2.0, Swift/Kotlin/JS SDKs, India region, cheapest
+per minute); Firestore is wrong for ink (cost and write limits).
 
 ## The contract
 
@@ -57,7 +64,7 @@ Rules that were learned the hard way, all in the spec:
 | Folder | What | How to test |
 |---|---|---|
 | `server/` | Room server, dependency-free Node 22. Rooms in memory, saved to memory / a folder / GCS. | `cd server && npm test` |
-| `web/` | Reference reducer, `RoomClient`, canvas, LiveKit video (vendored `livekit-client` 2.22.3), and the web app the server hosts | `cd web && npm test`; `web/e2e` for two real browsers |
+| `web/` | Reference reducer, `RoomClient`, canvas, LiveKit voice (vendored `livekit-client` 2.22.3), and the web app the server hosts | `cd web && npm test`; `web/e2e` for two real browsers |
 | `ios/SpaceNotesLive` | `LiveCore` (Foundation, builds on Linux), `LiveUI` (SwiftUI + PencilKit) | `swift test` (Linux or macOS) |
 | `ios/SpaceNotesLiveVideo` | LiveKit Swift SDK behind `LiveVideoProviding` | Xcode only (CI) |
 | `android/` | `live-core` (pure Kotlin), `live-ui` (Compose), `live-video` (LiveKit) | `./gradlew :live-core:test` etc.; needs `ANDROID_HOME` for the Android modules |
@@ -71,20 +78,20 @@ on purpose; keep them in step.
 cd server && npm run dev   # LIVE_DEV_AUTH=1: dev tokens "dev:<uid>:<name>"; never on Cloud Run (refused there)
 ```
 
-Voice/video locally: build `livekit-server` from Go's module proxy (GitHub
+Voice locally: build `livekit-server` from Go's module proxy (GitHub
 release downloads may be blocked in cloud sessions) and run
 `livekit-server --dev --bind 127.0.0.1` (keys `devkey` / `secret`), then start
 the room server with `LIVEKIT_URL=ws://127.0.0.1:7880 LIVEKIT_API_KEY=devkey
-LIVEKIT_API_SECRET=secret`. `web/e2e/video-call.mjs` drives two Chromiums with
-fake cameras through it.
+LIVEKIT_API_SECRET=secret`. `web/e2e/voice-call.mjs` drives two Chromiums with
+fake microphones through it.
 
 ## What has been verified, and what has not (2026-09-26)
 
 - **Verified here:** the reducer and permissions on all three platforms; the
   server over real WebSockets; the web client against the server; two real
   browsers through ink, text, pointers, follow-the-host, locking, undo and
-  ending; a real video call through a local LiveKit (video 640×360, audio,
-  data saver, mute); the Kotlin and Swift room clients against the real server
+  ending; a real voice call through a local LiveKit (audio, mute, and a
+  forced camera refused by LiveKit); the Kotlin and Swift room clients against the real server
   (live tests, skipped unless `LIVE_SERVER_URL` is set).
 - **Compiled in CI but never run on a device:** `LiveUI` (SwiftUI +
   PencilKit) and `SpaceNotesLiveVideo` (Xcode on macOS; both compiled first

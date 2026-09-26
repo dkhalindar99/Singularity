@@ -2,8 +2,8 @@
 // Proprietary and confidential. Use is governed by the LICENSE file.
 
 // The SpaceNotes Live web app: the lobby, the room and the goodbye screen.
-// The room is laid out like a video call — people along the top, the shared
-// page in the middle, tools along the bottom.
+// The room is laid out like a call — people along the top, the shared page
+// in the middle, tools along the bottom. Ink and voice only: no cameras.
 
 import { RoomClient } from "/src/client/room-client.js";
 import { LiveApi } from "/src/client/api.js";
@@ -39,7 +39,7 @@ let getToken;
 let api;
 let client = null;
 let view = null;
-let video = null;
+let voice = null;
 let follow = true;
 let lastSnapshot = null;
 const images = new Map(); // assetId -> ImageBitmap | "loading"
@@ -194,7 +194,7 @@ async function onFirstWelcome() {
   goTo(client.state.hostPageId ?? client.state.pages[0]?.id, { fromUser: false });
   renderTiles();
   renderPeople();
-  startVideo();
+  startVoice();
 }
 
 function goTo(pageId, { fromUser = true } = {}) {
@@ -386,14 +386,13 @@ function initials(name) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";
 }
 
-const tileElements = new Map(); // uid -> { tile, video, avatar, label, badge, track }
+const tileElements = new Map(); // uid -> { tile, avatar, label, badge }
 function renderTiles() {
   const strip = $("tiles");
   const members = uniqueMembers();
   const wanted = new Set(members.map((m) => m.uid));
   for (const [uid, el] of tileElements) {
     if (!wanted.has(uid)) {
-      el.track?.detach(el.video);
       el.tile.remove();
       tileElements.delete(uid);
     }
@@ -403,40 +402,27 @@ function renderTiles() {
     if (!el) {
       const tile = document.createElement("div");
       tile.className = "tile";
-      const videoEl = document.createElement("video");
-      videoEl.autoplay = true;
-      videoEl.playsInline = true;
-      videoEl.muted = true;
       const avatar = document.createElement("div");
       avatar.className = "avatar";
       const label = document.createElement("div");
       label.className = "tile-name";
       const badge = document.createElement("div");
       badge.className = "tile-badge";
-      tile.append(videoEl, avatar, label, badge);
-      el = { tile, video: videoEl, avatar, label, badge, track: null };
+      tile.append(avatar, label, badge);
+      el = { tile, avatar, label, badge };
       tileElements.set(m.uid, el);
     }
     strip.append(el.tile);
-    const track = video?.cameraTrack(m.uid) ?? null;
-    if (track !== el.track) {
-      el.track?.detach(el.video);
-      track?.attach(el.video);
-      el.track = track;
-    }
-    el.video.hidden = !track;
-    el.avatar.hidden = !!track;
     el.avatar.style.background = m.color;
     el.avatar.textContent = initials(m.name);
     const isMe = m.uid === client.me?.uid;
-    const micOff = video ? !video.isMicOn(m.uid) : false;
+    const micOff = voice ? !voice.isMicOn(m.uid) : false;
     const nameTag = document.createElement("span");
     nameTag.textContent = `${m.name}${isMe ? " (you)" : ""}${m.role === "host" ? " · host" : ""}${micOff ? " · muted" : ""}`;
     el.label.replaceChildren(nameTag);
     el.badge.hidden = !m.handRaised;
     el.badge.textContent = "Hand raised";
-    el.tile.classList.toggle("speaking", !!video?.isSpeaking(m.uid));
-    el.tile.style.borderColor = video?.isSpeaking(m.uid) ? "" : "transparent";
+    el.tile.classList.toggle("speaking", !!voice?.isSpeaking(m.uid));
   }
   $("people-count").textContent = String(members.length);
 }
@@ -510,60 +496,55 @@ $("end-room").addEventListener("click", () => {
 });
 $("leave").addEventListener("click", () => client.disconnect());
 
-// ---- voice and video ----------------------------------------------------------
+// ---- voice ---------------------------------------------------------------------
 
-async function startVideo() {
+async function startVoice() {
   let ticket;
   try {
-    ticket = await api.videoToken(client.roomId);
+    ticket = await api.videoToken(client.roomId); // the LiveKit ticket; microphone only
   } catch {
     ticket = null;
   }
   if (!ticket) {
-    for (const id of ["mic", "camera", "saver"]) $(id).title = "Voice and video are not set up on this server";
+    $("mic").title = "Voice is not set up on this server";
     return;
   }
   try {
-    const { LiveVideo } = await import("/src/video/livekit.js");
-    video = await LiveVideo.connect({ url: ticket.url, token: ticket.token });
+    const { LiveVoice } = await import("/src/voice/livekit.js");
+    voice = await LiveVoice.connect({ url: ticket.url, token: ticket.token });
   } catch (err) {
     toast("Voice could not start. You can still write together.");
     console.warn(err);
     return;
   }
-  video.attachAudio($("audio"));
-  video.addEventListener("change", () => {
-    renderMedia();
+  window.__live.voice = voice;
+  voice.attachAudio($("audio"));
+  voice.addEventListener("change", () => {
+    renderMic();
     renderTiles();
   });
-  for (const id of ["mic", "camera", "saver"]) $(id).disabled = false;
-  renderMedia();
+  $("mic").disabled = false;
+  renderMic();
 }
 
-function renderMedia() {
-  if (!video) return;
-  $("mic").setAttribute("aria-pressed", String(video.micEnabled));
-  $("mic").textContent = video.micEnabled ? "Mic on" : "Mic off";
-  $("camera").setAttribute("aria-pressed", String(video.cameraEnabled));
-  $("camera").textContent = video.cameraEnabled ? "Camera on" : "Camera off";
-  $("camera").disabled = video.dataSaver;
-  $("saver").setAttribute("aria-pressed", String(video.dataSaver));
-  if (!video.canPlayAudio) toast("Tap anywhere to hear the others");
+function renderMic() {
+  if (!voice) return;
+  $("mic").setAttribute("aria-pressed", String(voice.micEnabled));
+  $("mic").textContent = voice.micEnabled ? "Mic on" : "Mic off";
+  if (!voice.canPlayAudio) toast("Tap anywhere to hear the others");
 }
 
-$("mic").addEventListener("click", () => video?.setMic(!video.micEnabled).catch(() => toast("The microphone is blocked in this browser.")));
-$("camera").addEventListener("click", () => video?.setCamera(!video.cameraEnabled).catch(() => toast("The camera is blocked in this browser.")));
-$("saver").addEventListener("click", () => video?.setDataSaver(!video.dataSaver));
+$("mic").addEventListener("click", () => voice?.setMic(!voice.micEnabled).catch(() => toast("The microphone is blocked in this browser.")));
 document.addEventListener("click", () => {
-  if (video && !video.canPlayAudio) video.startAudio();
+  if (voice && !voice.canPlayAudio) voice.startAudio();
 });
 
 // ---- leaving -------------------------------------------------------------------
 
 function leaveRoom(reason) {
   const wasHost = client?.isHost;
-  video?.disconnect();
-  video = null;
+  voice?.disconnect();
+  voice = null;
   view?.destroy();
   history.replaceState(null, "", "/");
   const [title, text] = ENDED_TEXT[reason] ?? ["Disconnected", "The connection to the room was lost."];

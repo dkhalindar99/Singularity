@@ -1,11 +1,17 @@
 // Copyright (c) 2026 Pillikandla Dada Khalindar. All rights reserved.
 // Proprietary and confidential. Use is governed by the LICENSE file.
 
-// LiveKit access tokens. Voice and video go through LiveKit, not this server;
-// all this server does is hand each member a short-lived signed ticket for
-// the matching LiveKit room. A LiveKit token is an HS256 JWT signed with the
-// project's API secret (docs.livekit.io, "Authentication"), so node:crypto is
-// all it needs.
+// LiveKit access tokens. Voice goes through LiveKit, not this server; all
+// this server does is hand each member a short-lived signed ticket for the
+// matching LiveKit room.
+//
+// SpaceNotes Live is ink and voice only: no cameras, no screen sharing. The
+// ticket itself says so (canPublishSources), so LiveKit refuses any other
+// track even from a modified app. Faces are never carried, which keeps both
+// the bill and the personal data small (docs/research).
+//
+// A LiveKit token is an HS256 JWT signed with the project's API secret
+// (docs.livekit.io, "Authentication"), so node:crypto is all it needs.
 
 import crypto from "node:crypto";
 
@@ -33,6 +39,7 @@ export function liveKitToken({ apiKey, apiSecret, room, identity, name, ttlSec =
       room,
       roomJoin: true,
       canPublish: true,
+      canPublishSources: ["microphone"],
       canSubscribe: true,
       // Ink goes through the room server, which orders and checks it; nothing
       // should be able to bypass that through LiveKit's data channel.

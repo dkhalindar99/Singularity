@@ -18,8 +18,10 @@ every copy of the notebook ends up identical. Things that do not change the
 notebook — a stroke still being drawn, a pointer, which page someone is looking
 at — are **presence** messages: relayed, never numbered, never stored.
 
-Video and voice do not go through this server. They go through LiveKit; the
-room server only issues the LiveKit ticket (see "HTTP API").
+Voice does not go through this server. It goes through LiveKit; the room
+server only issues the LiveKit ticket (see "HTTP API"). SpaceNotes Live is
+**ink and voice only**: the ticket allows the microphone and nothing else, so
+LiveKit itself refuses a camera or a shared screen, whatever a client does.
 
 ## Transport
 
@@ -370,7 +372,7 @@ Every route except `GET /health` needs `Authorization: Bearer <Firebase ID token
 | `GET /rooms/code/{code}` | anyone signed in | Returns `{ roomId, title, hostName, allowGuests }`. |
 | `PUT /rooms/{roomId}/assets/{assetId}` | host | Body: PNG or JPEG, at most 8 MiB. |
 | `GET /rooms/{roomId}/assets/{assetId}` | member | The picture. |
-| `POST /rooms/{roomId}/video-token` | member | `{ url, token }` for LiveKit, or 503 `video-unavailable` when the server has no LiveKit keys; clients then carry on with ink only. |
+| `POST /rooms/{roomId}/video-token` | member | `{ url, token }` for LiveKit voice (the name is LiveKit's; the token allows the microphone only), or 503 `video-unavailable` when the server has no LiveKit keys; clients then carry on with ink only. |
 | `GET /rooms/{roomId}/snapshot` | host | `{ room, ended, state }`: the room details, whether it has ended, and the current room state, for saving back into the notebook. |
 | `GET /health` | anyone | `ok`. |
 

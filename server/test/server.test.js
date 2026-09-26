@@ -281,7 +281,7 @@ test("hello is checked: protocol, token, room, guests", async () => {
   signedIn.close();
 });
 
-test("video tokens are signed LiveKit tickets for members only", async () => {
+test("voice tokens are signed LiveKit tickets for members only, microphone only", async () => {
   const { roomId } = await createRoom();
   assert.equal((await api("POST", `/rooms/${roomId}/video-token`, "dev:stranger:S")).status, 403);
   const asha = await join(roomId, "dev:asha:Asha", "Asha Rao");
@@ -296,7 +296,7 @@ test("video tokens are signed LiveKit tickets for members only", async () => {
   assert.equal(payload.iss, LIVEKIT.apiKey);
   assert.equal(payload.sub, "asha");
   assert.equal(payload.name, "Asha Rao");
-  assert.deepEqual(payload.video, { room: roomId, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: false });
+  assert.deepEqual(payload.video, { room: roomId, roomJoin: true, canPublish: true, canPublishSources: ["microphone"], canSubscribe: true, canPublishData: false });
   assert.ok(payload.exp > payload.nbf);
   asha.close();
 });
