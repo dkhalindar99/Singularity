@@ -471,15 +471,17 @@ final class RoomClientTests: XCTestCase {
     func testLiveInkIsThrottledAndEndsWithDoneThenStroke() async {
         await connected()
         let streamer = client.beginLiveInk(pageId: page, ink: .pen, color: black, width: 2, strokeId: "LIVE")
-        streamer.add(x: 10, y: 20, width: 2)           // t = 0: sent at once
-        scheduler.advance(by: 0.01)
-        streamer.add(x: 30.5, y: 41.25, width: 2.5)    // buffered
-        scheduler.advance(by: 0.01)
-        streamer.add(x: 31.04, y: 42, width: 2.5)      // buffered
+        streamer.add(x: 10, y: 20, width: 2)           // t = 0: the first batch goes at once
         XCTAssertEqual(sentPresence().count, 1)
-        scheduler.advance(by: 0.01)                    // t = 0.03: flushed together
+        scheduler.advance(by: 0.005)
+        streamer.add(x: 30.5, y: 41.25, width: 2.5)    // buffered
+        scheduler.advance(by: 0.005)
+        streamer.add(x: 31.04, y: 42, width: 2.5)      // buffered
+        scheduler.advance(by: 0.005)                   // t = 0.015: still within one frame
+        XCTAssertEqual(sentPresence().count, 1)
+        scheduler.advance(by: 0.002)                   // t = 0.017: past 16 ms, flushed together
         XCTAssertEqual(sentPresence().count, 2)
-        streamer.add(x: 50, y: 60, width: 3)           // buffered (within 30 ms)
+        streamer.add(x: 50, y: 60, width: 3)           // buffered (within 16 ms)
         streamer.finish(stroke("ANY-ID"))
 
         let presence = sentPresence()
@@ -502,6 +504,85 @@ final class RoomClientTests: XCTestCase {
         XCTAssertEqual(committed.id, "LIVE")
         scheduler.advance(by: 1)
         XCTAssertEqual(sentPresence().count, 3, "nothing sent after finishing")
+    }
+
+    func testHoverPointerIsThrottledAndNeedsAMove() async {
+        await connected()
+        client.sendPointer(pageId: page, x: 10, y: 10, laser: false)     // t = 0: sent
+        client.sendPointer(pageId: page, x: 10.5, y: 10.5, laser: false) // under 1 pt: never sent
+        scheduler.advance(by: 0.2)
+        XCTAssertEqual(sentPresence(), [.pointer(pageId: page, x: 10, y: 10, laser: false)])
+
+        client.sendPointer(pageId: page, x: 20, y: 10, laser: false)     // t = 0.2: sent
+        scheduler.advance(by: 0.03)
+        client.sendPointer(pageId: page, x: 30, y: 10, laser: false)     // waits
+        scheduler.advance(by: 0.03)
+        client.sendPointer(pageId: page, x: 40, y: 10, laser: false)     // replaces the waiting one
+        XCTAssertEqual(sentPresence().count, 2)
+        scheduler.advance(by: 0.039)                                     // t = 0.299
+        XCTAssertEqual(sentPresence().count, 2)
+        scheduler.advance(by: 0.002)                                     // t = 0.301: the latest goes
+        XCTAssertEqual(sentPresence().last, .pointer(pageId: page, x: 40, y: 10, laser: false))
+        XCTAssertEqual(sentPresence().count, 3)
+    }
+
+    func testLaserIsThrottledTo33Milliseconds() async {
+        await connected()
+        client.sendPointer(pageId: page, x: 1, y: 1, laser: true)
+        scheduler.advance(by: 0.01)
+        client.sendPointer(pageId: page, x: 2, y: 2, laser: true)
+        scheduler.advance(by: 0.01)
+        client.sendPointer(pageId: page, x: 3, y: 3, laser: true)
+        XCTAssertEqual(sentPresence().count, 1)
+        scheduler.advance(by: 0.014)                                     // t = 0.034
+        XCTAssertEqual(sentPresence(), [.pointer(pageId: page, x: 1, y: 1, laser: true),
+                                        .pointer(pageId: page, x: 3, y: 3, laser: true)])
+        // A laser held still keeps refreshing, so it does not fade.
+        scheduler.advance(by: 0.1)
+        client.sendPointer(pageId: page, x: 3, y: 3, laser: true)
+        XCTAssertEqual(sentPresence().count, 3)
+    }
+
+    func testNoPointerWhileDrawing() async {
+        await connected()
+        client.sendPointer(pageId: page, x: 10, y: 10, laser: false)
+        scheduler.advance(by: 0.05)
+        client.sendPointer(pageId: page, x: 50, y: 50, laser: false)     // waiting…
+        let streamer = client.beginLiveInk(pageId: page, ink: .pen, color: black, width: 2)
+        // …dropped, and the shown pointer is hidden: the ink shows the pen.
+        XCTAssertEqual(sentPresence().last, .pointerHide)
+        streamer.add(x: 60, y: 60, width: 2)
+        client.sendPointer(pageId: page, x: 60, y: 60, laser: false)
+        scheduler.advance(by: 1)
+        XCTAssertFalse(sentPresence().contains(.pointer(pageId: page, x: 50, y: 50, laser: false)))
+        XCTAssertFalse(sentPresence().contains(.pointer(pageId: page, x: 60, y: 60, laser: false)))
+        streamer.finish(stroke("S"))
+        client.sendPointer(pageId: page, x: 70, y: 70, laser: false)
+        XCTAssertEqual(sentPresence().last, .pointer(pageId: page, x: 70, y: 70, laser: false), "back once the stroke ends")
+    }
+
+    func testNotebookActivityIsRecorded() async {
+        await connected()
+        XCTAssertEqual(client.lastNotebookActivityAt, 0)
+        scheduler.advance(by: 10)
+        socket.receive(.op(SequencedOp(seq: 1, author: "uid-host", op: .roomPolicy(drawPolicy: "host", penHolder: nil))))
+        XCTAssertEqual(client.lastNotebookActivityAt, 0, "a policy change is not ink")
+        socket.receive(.presence(from: PresenceSender(uid: "uid-ravi", connectionId: "c3"), presence: ink("R", [1, 2, 3])))
+        XCTAssertEqual(client.lastNotebookActivityAt, 10)
+        scheduler.advance(by: 5)
+        socket.receive(.op(SequencedOp(seq: 2, author: "uid-ravi", op: .textErase(pageId: page, textIds: ["T"]))))
+        XCTAssertEqual(client.lastNotebookActivityAt, 15)
+    }
+
+    func testPresenceChangesDoNotChangeTheClient() async {
+        await connected()
+        var clientChanges = 0, presenceChanges = 0
+        client.onChange = { clientChanges += 1 }
+        client.presence.onChange = { presenceChanges += 1 }
+        socket.receive(.presence(from: PresenceSender(uid: "uid-ravi", connectionId: "c3"), presence: ink("R", [1, 2, 3])))
+        socket.receive(.presence(from: PresenceSender(uid: "uid-ravi", connectionId: "c3"), presence: .pointer(pageId: page, x: 1, y: 1, laser: true)))
+        XCTAssertEqual(presenceChanges, 2)
+        XCTAssertEqual(clientChanges, 0, "a friend's ink redraws only the overlay")
     }
 
     func testCancelledLiveInkSendsDone() async {
@@ -654,6 +735,7 @@ final class RoomClientTests: XCTestCase {
 
     func testOutgoingPresence() async {
         await connected()
+        client.hidePointer() // nothing shown yet, so nothing to hide
         client.sendPointer(pageId: page, x: 10.04, y: 20.06, laser: true)
         client.hidePointer()
         client.sendView(pageId: page)

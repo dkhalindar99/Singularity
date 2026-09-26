@@ -12,6 +12,10 @@ import SwiftUI
 /// token only allows the microphone, so LiveKit would refuse one anyway. A
 /// person joins with the microphone on and can mute.
 ///
+/// The microphone is published with LiveKit's speech preset (24 kbps) and
+/// silence suppression (DTX), which halves the data of the default music
+/// preset; voice is most of what a room costs.
+///
 /// People are matched to tiles by LiveKit participant identity, which the
 /// room server sets to the person's Firebase uid when it issues the ticket.
 @MainActor
@@ -22,7 +26,8 @@ public final class LiveKitVoiceProvider: LiveVoiceProviding {
 
     public init() {
         observer = RoomObserver()
-        room = Room(delegate: observer)
+        let speech = AudioPublishOptions(encoding: AudioEncoding.presetSpeech, dtx: true)
+        room = Room(delegate: observer, roomOptions: RoomOptions(defaultAudioPublishOptions: speech))
         observer.changed = { [weak self] in
             Task { @MainActor in self?.onChange?() }
         }
@@ -31,13 +36,17 @@ public final class LiveKitVoiceProvider: LiveVoiceProviding {
     public var isConnected: Bool { room.connectionState == .connected || room.connectionState == .reconnecting }
     public var isMicrophoneEnabled: Bool { room.localParticipant.isMicrophoneEnabled() }
 
-    public func connect(url: String, token: String) async throws {
+    public func connect(url: String, token: String, microphoneEnabled: Bool) async throws {
         try await room.connect(url: url, token: token)
-        // The microphone is on by default; a failure here (permission
-        // refused) leaves the person in the room, muted.
-        _ = try? await room.localParticipant.setMicrophone(enabled: true)
+        // A failure here (permission refused) leaves the person in the
+        // call, muted.
+        if microphoneEnabled {
+            _ = try? await room.localParticipant.setMicrophone(enabled: true)
+        }
         onChange?()
     }
+
+    public var isAnyoneSpeaking: Bool { !room.activeSpeakers.isEmpty }
 
     public func disconnect() async {
         await room.disconnect()

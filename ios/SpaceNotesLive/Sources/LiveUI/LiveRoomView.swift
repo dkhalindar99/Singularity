@@ -22,6 +22,9 @@ public struct LiveRoomView: View {
     @State private var confirmingLeave = false
     @State private var finishing = false
     @State private var refusal: String?
+    /// When to leave voice to save money; nil until the room view appears.
+    @State private var voicePolicy: VoiceIdlePolicy?
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.liveTheme) private var theme
 
     /// - Parameters:
@@ -74,7 +77,20 @@ public struct LiveRoomView: View {
         .overlay { endedOverlay }
         .task {
             client.connect()
-            await connectVoice()
+            voicePolicy = VoiceIdlePolicy(now: client.scheduler.now)
+            await connectVoice(microphoneEnabled: true)
+        }
+        .task { await watchVoiceIdle() }
+        .onChange(of: scenePhase) { _, phase in
+            let now = client.scheduler.now
+            switch phase {
+            case .background:
+                voicePolicy?.enteredBackground(at: now)
+            case .active:
+                if let action = voicePolicy?.becameActive(at: now) { perform(action) }
+            default:
+                break
+            }
         }
         .onChange(of: client.status) { _, status in
             if status == .connected, currentPageId == nil {
@@ -124,7 +140,19 @@ public struct LiveRoomView: View {
                 }
             }
             Spacer()
-            if let provider = voiceObserver.provider, provider.isConnected {
+            if voicePolicy?.state == .pausedQuiet, voice != nil {
+                Button {
+                    if let action = voicePolicy?.resume(at: client.scheduler.now) { perform(action) }
+                } label: {
+                    Label("Voice paused — tap to resume", systemImage: "speaker.slash")
+                        .font(theme.label)
+                        .foregroundColor(theme.primaryText)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(theme.raisedSurface))
+                        .overlay(Capsule().stroke(theme.divider, lineWidth: 1))
+                }
+            } else if let provider = voiceObserver.provider, provider.isConnected {
                 barButton(provider.isMicrophoneEnabled ? "mic.fill" : "mic.slash.fill",
                           label: provider.isMicrophoneEnabled ? "Mute" : "Unmute",
                           tint: provider.isMicrophoneEnabled ? theme.primaryText : theme.danger) {
@@ -319,10 +347,39 @@ public struct LiveRoomView: View {
         if byHand, !client.isHost, pageId != client.state.hostPageId { followHost = false }
     }
 
-    private func connectVoice() async {
-        guard let voice, !voice.isConnected else { return }
+    /// A fresh ticket each time: a rejoin may come long after the first.
+    private func connectVoice(microphoneEnabled: Bool) async {
+        guard let voice, !voice.isConnected, !client.status.isEnded else { return }
         guard let ticket = try? await api.voiceToken(roomId: client.roomId) else { return }
-        try? await voice.connect(url: ticket.url, token: ticket.token)
+        try? await voice.connect(url: ticket.url, token: ticket.token, microphoneEnabled: microphoneEnabled)
+    }
+
+    private func perform(_ action: VoiceIdlePolicy.Action) {
+        switch action {
+        case .none:
+            break
+        case .leave:
+            // Only voice: the notebook stays connected, and ink is nearly free.
+            Task { await voice?.disconnect() }
+        case .rejoin(let microphoneOn):
+            Task { await connectVoice(microphoneEnabled: microphoneOn) }
+        }
+    }
+
+    /// Every few seconds: anyone speaking, or any ink or text in the room,
+    /// keeps voice on; otherwise the policy decides when to leave.
+    private func watchVoiceIdle() async {
+        guard let voice else { return }
+        while !Task.isCancelled, !client.status.isEnded {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard var policy = voicePolicy else { continue }
+            let now = client.scheduler.now
+            policy.noteActivity(at: client.lastNotebookActivityAt)
+            if voice.isConnected, voice.isAnyoneSpeaking { policy.noteActivity(at: now) }
+            let action = policy.check(at: now, microphoneOn: voice.isMicrophoneEnabled)
+            voicePolicy = policy
+            perform(action)
+        }
     }
 
     private func finish(endForEveryone: Bool) async {

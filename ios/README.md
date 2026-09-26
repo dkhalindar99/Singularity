@@ -83,16 +83,33 @@ ios/
     `too-large`. Rejections reach `onReject` and `lastRejection`, and the
     room screen shows a short notice.
   - Presence out: `beginLiveInk(...)` returns a `LiveInkStreamer`, which
-    sends `ink.live` at most every 30 ms (points rounded to 0.1 the way
+    sends the first batch of `ink.live` at once and then at most one message
+    every 16 ms, one screen frame (points rounded to 0.1 the way
     JavaScript's `Math.round` does), then `done: true`, then `stroke.add` with
-    the same id. `sendPointer`, `hidePointer`, `sendView`, `setHandRaised`.
-    Presence is not queued while offline.
+    the same id. `sendPointer` is throttled: a hovering pointer at most every
+    100 ms and only after a move of 1 pt, the laser at most every 33 ms, the
+    latest position sent when the wait ends; nothing is sent while a stroke is
+    being drawn (a shown pointer is hidden when one starts). `hidePointer`,
+    `sendView`, `setHandRaised`. Presence is not queued while offline.
+  - `lastNotebookActivityAt`: when ink or text last happened in the room (a
+    stroke, text or move op, or anyone's `ink.live`), for the voice idle
+    policy.
   - Presence in, per connectionId: `remoteInk` (a preview stays after `done`
     until the `stroke.add` with its id swaps it out, and is dropped 1.5 s
     after `done` if that never comes, or when the member leaves), `pointers`,
-    `views`; `view` and `hand` also update `members`.
+    `views`; `view` and `hand` also update `members`. In-progress ink and
+    pointers live in `client.presence` (`LivePresence`), observed on its own,
+    so a friend's stroke redraws only the overlay, not the page.
   - Host controls: `remove(uid:)`, `endRoom()`.
   - Reconnect backoff 0.5, 1, 2, 4, then every 8 s; ping every 20 s.
+- **`InkSmoothing`** — turns samples into quadratic curves through the
+  midpoints of neighbouring points, each piece at its own point's width, so
+  ink drawn outside PencilKit looks like a pen rather than straight segments.
+- **`VoiceIdlePolicy`** — when to leave voice to save money (PROTOCOL.md,
+  "Voice and cost"): after 2 minutes in the background (rejoining by itself,
+  with the microphone as it was, when the app is active again), and after 15
+  minutes in which nobody has spoken, drawn or written ("Voice paused — tap
+  to resume"). Pure, with the clock passed in.
 - **`LiveAPI`** — `createRoom`, `lookup(code:)`, `voiceToken` (the
   protocol's `POST /rooms/{id}/video-token` route; nil on 503),
   `uploadAsset`, `asset`, `snapshot` (`{ room, ended, state }`). Takes an injectable HTTP function.
@@ -131,17 +148,25 @@ Linux and macOS the module is empty. It re-exports LiveCore.
   watches the same touches (coalesced) to stream them with
   `LiveInkStreamer`. Remote strokes in progress, pointers and the fading
   laser are drawn in a SwiftUI `Canvas` overlay in each member's colour, with
-  name labels. The eraser hit-tests against the state and sends
+  name labels. The overlay observes `client.presence` alone and draws with
+  animations off, so each `ink.live` shows in the next frame, as smooth
+  curves (`LiveInkRenderer`, from `InkSmoothing`); translucent ink is drawn
+  opaque into one layer and faded as a whole, so a highlighter does not
+  darken at its joints. Committed strokes are drawn by PencilKit, which
+  smooths them itself. A hovering Pencil or trackpad sends a pointer. The eraser hit-tests against the state and sends
   `stroke.erase`; the text tool adds or edits a text box with a tap. Tools
   that change the notebook are greyed out when `canDraw` is false; the laser
   always works. A finger-drawing toggle switches between Pencil-only and any
   input.
 - `LiveVoiceProviding` — what the tiles and the mute button use
-  (`isMicrophoneOn(uid:)`, `isSpeaking(uid:)`, `setMicrophoneEnabled`), so
+  (`connect(url:token:microphoneEnabled:)`, `isMicrophoneOn(uid:)`,
+  `isSpeaking(uid:)`, `isAnyoneSpeaking`, `setMicrophoneEnabled`), so
   LiveUI does not depend on LiveKit. A tile is the person's initials in their
   colour, their name, a host badge, their microphone state, a ring while they
   speak, and a raised hand. With no provider there is no voice: the tiles
-  show who is here and the room is ink only.
+  show who is here and the room is ink only. The room view runs
+  `VoiceIdlePolicy` from `scenePhase` and a 5-second check, and leaving voice
+  never leaves the room.
 - `LiveTheme` — every colour and font in one struct (`.liveTheme(_:)`), with
   neutral defaults. Text on the page goes through `theme.pageText(size)`.
 
@@ -149,8 +174,12 @@ Linux and macOS the module is empty. It re-exports LiveCore.
 
 `LiveKitVoiceProvider` implements `LiveVoiceProviding` on LiveKit's Swift SDK
 (`https://github.com/livekit/client-sdk-swift`, `from: "2.17.0"`,
-Apache-2.0). It joins with the microphone on, mutes and unmutes it, and reads
-who is speaking from LiveKit. It never publishes a camera. It is a separate
+Apache-2.0). It joins with the microphone on (or as it was, on a rejoin),
+mutes and unmutes it, and reads who is speaking from LiveKit (per person, and
+`room.activeSpeakers` for the idle policy). The microphone is published with
+LiveKit's speech preset (`AudioEncoding.presetSpeech`, 24 kbps) and DTX on.
+LiveKit's RED (redundant audio, for lossy mobile networks) stays at its
+default, on. It never publishes a camera. It is a separate
 package so LiveCore's tests never resolve LiveKit. Before shipping, record
 LiveKit and its licence in the notebook's `NOTICE.md`, and add
 `NSMicrophoneUsageDescription` to the app's Info.plist (no camera usage
@@ -181,8 +210,12 @@ reject rollback, `duplicate` reject, seq-gap reconnect, backoff, ping,
 `removed` / rejoin refused, error codes (terminal or reconnect with growing
 backoff), close reasons, the clock-based op counter, too-large ops, undo/redo
 pairs (including undo-then-redo of stroke.add), the live-ink throttle and
-done ordering, finished previews expiring after 1.5 s, the 5,000-point rule,
-and presence cleanup. Also `LiveAPI`, hit testing and the hosting seam.
+done ordering (first batch at once, then 16 ms), pointer throttling (hover
+100 ms and 1 pt, laser 33 ms, none while drawing), notebook activity, that a
+friend's ink changes only `client.presence`, finished previews expiring after
+1.5 s, the 5,000-point rule, and presence cleanup; `InkSmoothing`; and every
+`VoiceIdlePolicy` path (quiet pause and tap to resume, background leave and
+rejoin with the microphone as it was, a brief trip to the background). Also `LiveAPI`, hit testing and the hosting seam.
 
 ### Against a real server
 
@@ -257,19 +290,22 @@ and add them to `project.yml` under `packages:`. Then:
 This machine is Linux (Ubuntu 24.04, x86_64) with the Swift 6.1.2 release
 toolchain; there is no Xcode, UIKit, SwiftUI or PencilKit.
 
-- **Compiled and tested:** `LiveCore` and `LiveCoreTests`: 61 offline tests,
+- **Compiled and tested:** `LiveCore` and `LiveCoreTests`: 74 offline tests,
   all passing, and a clean build under `-strict-concurrency=complete`. The 8
   live tests passed against the real room server (Node, dev auth) three runs
   in a row, over the real URLSession WebSocket transport, with one skipped on
   Linux as described above.
-- **Compiled only in CI (Xcode on macOS), never run:** `LiveUI` and the
-  LiveKit package, which CI built green for iOS at commit 0b22734, when it was
-  still the camera-and-voice `SpaceNotesLiveVideo`. The voice-only rewrite
-  (`SpaceNotesLiveVoice`, avatar tiles, no camera) removes code and uses only
-  LiveKit calls that build already compiled, but it has not been through CI
-  yet. Neither has run on an iPad: in particular the passive touch observer
-  alongside PencilKit's drawing gesture, the zoomed canvases' geometry, text
-  editing focus, and the microphone and speaking ring.
+- **Compiled only in CI (Xcode on macOS), never run:** `LiveUI` and
+  `SpaceNotesLiveVoice`, which CI built green for iOS at commit 419fa04 (the
+  voice-only version). The latency and cost round after it (smooth overlay,
+  hover pointer, `scenePhase` and the idle check, the speech preset, the
+  `LiveVoiceProviding` changes) has not been through CI yet. None of it has
+  run on an iPad: in particular the passive touch observer alongside
+  PencilKit's drawing gesture, the zoomed canvases' geometry, text editing
+  focus, Pencil hover, the microphone and speaking ring, and whether the app
+  keeps running long enough in the background (it needs the `audio`
+  background mode while in a call) for the 2-minute leave to fire; if iOS
+  suspends it sooner, LiveKit's connection drops with it anyway.
 - **Not yet run on Apple's URLSession:** the live tests. Run them on a Mac
   (`swift test` with `LIVE_SERVER_URL`), where the large-frame test is not
   skipped.

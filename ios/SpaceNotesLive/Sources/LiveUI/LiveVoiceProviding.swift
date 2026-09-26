@@ -19,14 +19,18 @@ public protocol LiveVoiceProviding: AnyObject {
     var isConnected: Bool { get }
     var isMicrophoneEnabled: Bool { get }
 
-    /// Joins with the microphone on.
-    func connect(url: String, token: String) async throws
+    /// Joins voice, with the microphone on or off. Rooms join with it on;
+    /// a rejoin after the background restores what it was.
+    func connect(url: String, token: String, microphoneEnabled: Bool) async throws
     func disconnect() async
     func setMicrophoneEnabled(_ enabled: Bool) async throws
 
     /// nil when the person is not in the call at all.
     func isMicrophoneOn(uid: String) -> Bool?
     func isSpeaking(uid: String) -> Bool
+    /// Anyone in the call speaking right now (LiveKit's active speakers).
+    /// Keeps the room from being paused as quiet.
+    var isAnyoneSpeaking: Bool { get }
 }
 
 /// Bridges a provider's `onChange` into SwiftUI.

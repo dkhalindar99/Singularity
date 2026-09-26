@@ -747,7 +747,8 @@ public final class LivePresence {
     }
 }
 
-/// Streams one stroke's points while it is drawn, at most every 30 ms.
+/// Streams one stroke's points while it is drawn: the first batch at once,
+/// then at most one message every 16 ms (one screen frame).
 @MainActor
 public final class LiveInkStreamer {
     public let pageId: String

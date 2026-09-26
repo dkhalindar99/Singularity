@@ -50,8 +50,8 @@ struct LivePageView: View {
                     },
                     onStroke: finishStroke
                 )
-                LiveRemoteOverlay(inks: client.remoteInk.values.filter { $0.pageId == page.id },
-                                  pointers: client.pointers.values.filter { $0.pageId == page.id },
+                LiveRemoteOverlay(presence: client.presence,
+                                  pageId: page.id,
                                   members: client.members,
                                   localLaser: localLaser,
                                   scale: scale)
@@ -62,6 +62,18 @@ struct LivePageView: View {
                 textLayer(scale: scale)
             }
             .frame(width: size.width, height: size.height)
+            // A hovering Pencil (or trackpad) shows others where this person
+            // is pointing. RoomClient throttles it and sends nothing while a
+            // stroke is being drawn.
+            .onContinuousHover(coordinateSpace: .local) { phase in
+                guard tools.tool != .laser else { return }
+                switch phase {
+                case .active(let location):
+                    client.sendPointer(pageId: page.id, x: Double(location.x / scale), y: Double(location.y / scale), laser: false)
+                case .ended:
+                    client.hidePointer()
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
             .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
@@ -287,9 +299,13 @@ struct LivePageBackground: View {
 }
 
 /// Everyone else's strokes in progress and their pointers, in their colours.
+///
+/// It observes `client.presence` on its own, so each ink.live redraws this
+/// overlay in the next frame without re-rendering the page, and without any
+/// animation in between.
 struct LiveRemoteOverlay: View {
-    let inks: [RoomClient.RemoteInk]
-    let pointers: [RoomClient.RemotePointer]
+    @ObservedObject var presence: LivePresence
+    let pageId: String
     let members: [Member]
     let localLaser: CGPoint?
     let scale: CGFloat
@@ -299,21 +315,15 @@ struct LiveRemoteOverlay: View {
     private let laserFade: Double = 1.2
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: pointers.isEmpty && localLaser == nil)) { _ in
+        let inks = presence.remoteInk.values.filter { $0.pageId == pageId }
+        let pointers = presence.pointers.values.filter { $0.pageId == pageId }
+        // Only a fading laser needs a clock; ink redraws when it arrives.
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !pointers.contains { $0.laser } && localLaser == nil)) { _ in
             Canvas { context, _ in
                 let now = ProcessInfo.processInfo.systemUptime
                 for ink in inks {
-                    guard let first = ink.points.first else { continue }
-                    var path = Path()
-                    path.move(to: CGPoint(x: CGFloat(first.x) * scale, y: CGFloat(first.y) * scale))
-                    for point in ink.points.dropFirst() {
-                        path.addLine(to: CGPoint(x: CGFloat(point.x) * scale, y: CGFloat(point.y) * scale))
-                    }
-                    if ink.points.count == 1 {
-                        path.addLine(to: CGPoint(x: CGFloat(first.x) * scale + 0.1, y: CGFloat(first.y) * scale))
-                    }
-                    context.stroke(path, with: .color(Color(live: ink.color)),
-                                   style: StrokeStyle(lineWidth: max(1, CGFloat(ink.width) * scale), lineCap: .round, lineJoin: .round))
+                    let samples = ink.points.map { InkSample(x: $0.x, y: $0.y, width: $0.width) }
+                    LiveInkRenderer.draw(samples, color: ink.color, scale: scale, in: &context)
                     if let last = ink.points.last, let member = member(ink.uid) {
                         label(member, at: CGPoint(x: CGFloat(last.x) * scale + 10, y: CGFloat(last.y) * scale - 12), in: &context)
                     }
@@ -334,6 +344,10 @@ struct LiveRemoteOverlay: View {
                     laserDot(at: CGPoint(x: localLaser.x * scale, y: localLaser.y * scale), alpha: 1, in: &context)
                 }
             }
+        }
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
         }
     }
 
