@@ -97,7 +97,7 @@ fake microphones through it.
   PencilKit) and `SpaceNotesLiveVoice` (Xcode on macOS; both compiled first
   time), the Compose screen and the Android LiveKit provider (Gradle, lint
   clean). CI (`.github/workflows/ci.yml`) was green on all four jobs at
-  commit 419fa04, the voice-only version.
+  commit 9c2a68b (voice only, 16 ms live ink, voice idle pause).
 - **Linux Swift quirks** (live tests only): Ubuntu's libcurl lacks
   WebSockets, and even a WebSocket-enabled one drops outgoing messages over
   ~16–48 KB, so the full-length-stroke live test is skipped on Linux; the
@@ -108,6 +108,22 @@ fake microphones through it.
 - **Not deployed.** `server/scripts/deploy-gcp.sh` (asia-south1, one
   instance, GCS bucket) waits for the owner: it creates billed resources and
   needs a LiveKit project and a Firebase Web app key first.
+
+## Realtime and cost (2026-09-26)
+
+- **Live ink latency**, two browsers on one machine
+  (`web/e2e/ink-latency.mjs`): median 16 ms → ~2 ms and 90th percentile
+  29 ms → ~4 ms after moving from 30 ms batches to "first batch at once, then
+  one per 16 ms frame". Real pencils group points for up to 16 ms (~8 ms
+  average); real networks add ~20–60 ms in India.
+- **Smooth ink**: every platform draws strokes and friends' live previews as
+  quadratic curves through segment midpoints.
+- **Cost levers, in order of size:** voice minutes (LiveKit bills connected
+  minutes, muted or not) → voice leaves after 2 min in the background or
+  15 quiet minutes (`VoiceIdlePolicy` on all three); speech preset 24 kbps
+  with DTX instead of music 48 kbps (students' mobile data); room saves to
+  GCS at most every 30 s (each save is a paid write; 3 s would have cost as
+  much as the ink); pointers throttled and never sent while drawing.
 
 ## Conventions
 
