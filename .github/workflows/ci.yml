@@ -70,11 +70,11 @@ jobs:
           distribution: temurin
           java-version: 21
       # The runner image already carries the Android SDK at $ANDROID_HOME.
-      - name: Android platform 37
+      - name: Android platform 37.0
         run: |
           SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
           yes | "$SDKMANAGER" --licenses > /dev/null || true
-          "$SDKMANAGER" "platforms;android-37" "build-tools;37.0.0"
+          "$SDKMANAGER" "platforms;android-37.0" "build-tools;37.0.0"
       - name: Test and build
         run: ./gradlew :live-core:test :live-ui:testDebugUnitTest :live-ui:assembleDebug :live-video:assembleDebug :live-ui:lintDebug :live-video:lintDebug
         working-directory: android
