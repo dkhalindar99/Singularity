@@ -52,8 +52,13 @@ jobs:
         run: xcodebuild -scheme LiveUI -destination 'generic/platform=iOS Simulator' -skipPackagePluginValidation build CODE_SIGNING_ALLOWED=NO
         working-directory: ios/SpaceNotesLive
       - name: Build SpaceNotesLiveVideo for iOS
-        run: xcodebuild -scheme LiveVideo -destination 'generic/platform=iOS Simulator' -skipPackagePluginValidation build CODE_SIGNING_ALLOWED=NO
         working-directory: ios/SpaceNotesLiveVideo
+        run: |
+          xcodebuild -list
+          # SwiftPM names the scheme after the package or the product,
+          # depending on the Xcode version; build whichever exists.
+          SCHEME=$(xcodebuild -list -json | python3 -c "import json,sys; s=json.load(sys.stdin)['workspace']['schemes']; print(next(x for x in ['SpaceNotesLiveVideo','LiveVideo','SpaceNotesLiveVideo-Package'] if x in s))")
+          xcodebuild -scheme "$SCHEME" -destination 'generic/platform=iOS Simulator' -skipPackagePluginValidation build CODE_SIGNING_ALLOWED=NO
 
   android:
     name: Android modules (Gradle)
@@ -64,9 +69,12 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
+      # The runner image already carries the Android SDK at $ANDROID_HOME.
       - name: Android platform 37
-        run: sdkmanager "platforms;android-37" "build-tools;37.0.0"
+        run: |
+          SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-37" "build-tools;37.0.0"
       - name: Test and build
         run: ./gradlew :live-core:test :live-ui:testDebugUnitTest :live-ui:assembleDebug :live-video:assembleDebug :live-ui:lintDebug :live-video:lintDebug
         working-directory: android
