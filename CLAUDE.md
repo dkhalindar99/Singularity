@@ -97,7 +97,7 @@ fake microphones through it.
   PencilKit) and `SpaceNotesLiveVoice` (Xcode on macOS; both compiled first
   time), the Compose screen and the Android LiveKit provider (Gradle, lint
   clean). CI (`.github/workflows/ci.yml`) was green on all four jobs at
-  commit 0b22734.
+  commit 419fa04, the voice-only version.
 - **Linux Swift quirks** (live tests only): Ubuntu's libcurl lacks
   WebSockets, and even a WebSocket-enabled one drops outgoing messages over
   ~16–48 KB, so the full-length-stroke live test is skipped on Linux; the
