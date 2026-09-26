@@ -8,13 +8,62 @@ lets a person publish their microphone. The contract with the
 server and the web and Android clients is `protocol/PROTOCOL.md`; the files in
 `fixtures/protocol/` are its executable form.
 
-Two Swift packages live here:
+Two Swift packages and a demo app live here:
 
 ```
 ios/
   SpaceNotesLive/          LiveCore + LiveUI (no third-party dependencies)
   SpaceNotesLiveVoice/     LiveVoice: LiveKit voice
+  Demo/                    "SpaceNotes Live Demo", a small app for trying it on an iPad
 ```
+
+## How to try it on your iPad
+
+The demo app is SpaceNotes Live on its own, without the notebook: a screen
+for the server address and your name, then the real lobby and room. It
+installs from Xcode with a free Apple ID. You need a Mac with Xcode, an iPad
+(or iPhone) with a cable, and both on the same Wi-Fi.
+
+1. **Start the room server on the Mac.** In the repo's `server` folder, run
+   `npm run dev` (Node 22). It prints lines like
+   `http://192.168.1.23:8080`: that is the address the iPad will use. For
+   voice as well as ink, start LiveKit first as described in the top-level
+   `CLAUDE.md`, "Running it"; without it the room is ink only.
+2. **Get XcodeGen.** Download `xcodegen.zip` from
+   <https://github.com/yonaskolb/XcodeGen/releases> (2.46.0 is what CI uses)
+   and unzip it, for example into your Downloads folder. Homebrew is not
+   needed.
+3. **Generate the Xcode project.** In Terminal, in this repo's `ios/Demo`
+   folder, run `~/Downloads/xcodegen/bin/xcodegen generate` (use wherever you
+   unzipped it). This writes `SpaceNotesLiveDemo.xcodeproj`. Run it again
+   whenever `project.yml` changes; the project itself is never committed.
+4. **Open the project.** Double-click `SpaceNotesLiveDemo.xcodeproj`. The
+   first time, Xcode downloads LiveKit's Swift package; wait for it to finish.
+   If your Apple ID is not in Xcode yet, add it in Xcode's Settings, under
+   Accounts.
+5. **Set your team.** Click the blue project icon at the top of the file
+   list, then the "SpaceNotes Live Demo" target, then "Signing &
+   Capabilities", and pick your "(Personal Team)". That is enough to run
+   now. So it survives the next `xcodegen generate`, also copy
+   `Local.xcconfig.example` to `Local.xcconfig` in `ios/Demo` and put your
+   Team ID in it: with the team picked, open "Build Settings", search for
+   "Development Team", and the ten-character code shown there is the ID.
+   `Local.xcconfig` is gitignored.
+6. **Plug in the iPad.** Unlock it and tap "Trust" on the iPad. If it asks,
+   turn on Developer Mode in the iPad's Settings, under Privacy & Security,
+   and let it restart.
+7. **Run.** Choose the iPad at the top of the Xcode window and press Run (the
+   triangle, or Command-R). The first time, the iPad refuses to open an app
+   from a free Apple ID: on the iPad, go to Settings, General, VPN & Device
+   Management, tap your Apple ID, and trust it. Then press Run again.
+8. **Try it.** On the iPad, allow the local network and the microphone when
+   asked. Type the address from step 1 and your name, leave "Dev token" on,
+   and tap Continue. Start a room (three lined pages), then join it from
+   another device with the six-character room code: a second iPad, an Android tablet,
+   or a browser on the Mac at `http://localhost:8080`.
+
+An app installed with a free Apple ID stops opening after seven days; run it
+from Xcode again to renew it.
 
 ## What each target is
 
@@ -285,6 +334,27 @@ and add them to `project.yml` under `packages:`. Then:
    page's visible strokes and texts to write into the notebook through the
    portable model.
 
+## The demo app (`ios/Demo`)
+
+`project.yml` (XcodeGen) makes one app target, "SpaceNotes Live Demo",
+bundle id `com.spacenotes.live.demo`, iPadOS/iOS 17+, iPad and iPhone, using
+LiveCore and LiveUI from `../SpaceNotesLive` and LiveVoice from
+`../SpaceNotesLiveVoice`. Signing follows the notebook's pattern with one
+change: `project.yml` points at a committed `Signing.xcconfig`, which does
+`#include? "Local.xcconfig"`, so your gitignored `Local.xcconfig` (copied from
+`Local.xcconfig.example`) sets `DEVELOPMENT_TEAM`, and CI and fresh clones
+build without it. Info.plist carries the microphone and local network
+descriptions, `NSAllowsLocalNetworking` (plain `http://` and `ws://` to a
+192.168.x.x address only; everything else still needs https) and the
+`audio` background mode.
+
+The app: a setup screen (server address, remembered; your name; a dev-token
+switch giving `dev:<uid>:<name>` with a uid kept per install, or a pasted
+Firebase ID token), then `LiveSessionView` with a built-in `DemoNotebook` of
+three lined A4 pages and `LiveKitVoiceProvider` (ink only when the server has
+no LiveKit keys). No Firebase. CI generates the project with XcodeGen 2.46.0
+and builds it for the simulator.
+
 ## What was and was not compiled or tested here
 
 This machine is Linux (Ubuntu 24.04, x86_64) with the Swift 6.1.2 release
@@ -306,6 +376,15 @@ toolchain; there is no Xcode, UIKit, SwiftUI or PencilKit.
   keeps running long enough in the background (it needs the `audio`
   background mode while in a call) for the 2-minute leave to fire; if iOS
   suspends it sooner, LiveKit's connection drops with it anyway.
+- **The demo app:** its Foundation-only files (`DemoSettings.swift`,
+  `DemoNotebook.swift`) were compiled here against LiveCore and checked in a
+  throwaway test (settings round trip, address clean-up, the dev token
+  matching the server's pattern, three lined pages). `project.yml` was run
+  through XcodeGen 2.46.0 built from source on Linux: it generates the
+  project, the shared "SpaceNotes Live Demo" scheme, both local packages and
+  the Info.plist above. The SwiftUI screen (`DemoApp.swift`) and the app
+  build itself were not compiled here; CI's demo step is their first build,
+  and nothing has been installed on an iPad yet.
 - **Not yet run on Apple's URLSession:** the live tests. Run them on a Mac
   (`swift test` with `LIVE_SERVER_URL`), where the large-frame test is not
   skipped.

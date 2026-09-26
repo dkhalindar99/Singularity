@@ -82,7 +82,7 @@ struct DemoSetupView: View {
                 } header: {
                     Text("Server address")
                 } footer: {
-                    Text("The room server on your computer, on the same Wi-Fi. Start it with `LIVE_DEV_AUTH=1 npm run dev` in the server folder; your computer's address is in its Wi-Fi settings.")
+                    Text("The room server on your computer, on the same Wi-Fi. Start it with `npm run dev` in the server folder: it prints the address to type here.")
                 }
 
                 Section("Your name") {

@@ -59,6 +59,18 @@ jobs:
           # depending on the Xcode version; build whichever exists.
           SCHEME=$(xcodebuild -list -json | python3 -c "import json,sys; s=json.load(sys.stdin)['workspace']['schemes']; print(next(x for x in ['SpaceNotesLiveVoice','LiveVoice','SpaceNotesLiveVoice-Package'] if x in s))")
           xcodebuild -scheme "$SCHEME" -destination 'generic/platform=iOS Simulator' -skipPackagePluginValidation build CODE_SIGNING_ALLOWED=NO
+      # The demo app the owner installs on an iPad (ios/README.md, "How to try
+      # it on your iPad"). XcodeGen from its release zip, the same way the
+      # owner runs it; pinned so a new release cannot break the build.
+      - name: Build the demo app (XcodeGen)
+        working-directory: ios/Demo
+        env:
+          XCODEGEN_VERSION: "2.46.0"
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          unzip -q -o "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
+          xcodebuild -project SpaceNotesLiveDemo.xcodeproj -scheme "SpaceNotes Live Demo" -destination 'generic/platform=iOS Simulator' -skipPackagePluginValidation build CODE_SIGNING_ALLOWED=NO
 
   android:
     name: Android modules (Gradle)
@@ -76,5 +88,12 @@ jobs:
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" "platforms;android-37.0" "build-tools;37.0.0"
       - name: Test and build
-        run: ./gradlew :live-core:test :live-ui:testDebugUnitTest :live-ui:assembleDebug :live-voice:assembleDebug :live-ui:lintDebug :live-voice:lintDebug
+        run: ./gradlew :live-core:test :live-ui:testDebugUnitTest :live-ui:assembleDebug :live-voice:assembleDebug :live-demo:assembleDebug :live-ui:lintDebug :live-voice:lintDebug :live-demo:lintDebug
         working-directory: android
+      # The demo APK, debug-signed, to download from the run and sideload.
+      - name: Keep the demo APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpaceNotesLiveDemo-debug-apk
+          path: android/live-demo/build/outputs/apk/debug/live-demo-debug.apk
+          if-no-files-found: error
