@@ -1,0 +1,6 @@
+*
+!server/package.json
+!server/src
+!web/src
+!web/app
+!web/vendor
