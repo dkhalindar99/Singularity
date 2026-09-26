@@ -50,8 +50,8 @@ executable form: every platform's tests run the same files.
 | `fixtures/protocol/` | Reducer scenarios, permission cases, every message; regenerate with `node fixtures/tools/make-fixtures.mjs` | run by every platform |
 | `server/` | The room server: dependency-free Node 22 | `cd server && npm test` |
 | `web/` | The web package (reducer, room client, canvas, LiveKit voice) and the web app the server hosts | `cd web && npm test`; browser runs in `web/e2e` |
-| `ios/` | Swift packages: `LiveCore`, `LiveUI` (SwiftUI + PencilKit), and `SpaceNotesLiveVideo` (LiveKit) | see `ios/README.md` |
-| `android/` | Gradle modules: `live-core`, `live-ui` (Compose), `live-video` (LiveKit) | see `android/README.md` |
+| `ios/` | Swift packages: `LiveCore`, `LiveUI` (SwiftUI + PencilKit), and `SpaceNotesLiveVoice` (LiveKit) | see `ios/README.md` |
+| `android/` | Gradle modules: `live-core`, `live-ui` (Compose), `live-voice` (LiveKit voice) | see `android/README.md` |
 | `docs/research/` | The research report behind every choice here, with its notes | — |
 
 ## Run it on your computer

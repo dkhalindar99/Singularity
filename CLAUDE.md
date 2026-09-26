@@ -66,8 +66,8 @@ Rules that were learned the hard way, all in the spec:
 | `server/` | Room server, dependency-free Node 22. Rooms in memory, saved to memory / a folder / GCS. | `cd server && npm test` |
 | `web/` | Reference reducer, `RoomClient`, canvas, LiveKit voice (vendored `livekit-client` 2.22.3), and the web app the server hosts | `cd web && npm test`; `web/e2e` for two real browsers |
 | `ios/SpaceNotesLive` | `LiveCore` (Foundation, builds on Linux), `LiveUI` (SwiftUI + PencilKit) | `swift test` (Linux or macOS) |
-| `ios/SpaceNotesLiveVideo` | LiveKit Swift SDK behind `LiveVideoProviding` | Xcode only (CI) |
-| `android/` | `live-core` (pure Kotlin), `live-ui` (Compose), `live-video` (LiveKit) | `./gradlew :live-core:test` etc.; needs `ANDROID_HOME` for the Android modules |
+| `ios/SpaceNotesLiveVoice` | LiveKit Swift SDK behind `LiveVoiceProviding` (microphone only) | Xcode only (CI) |
+| `android/` | `live-core` (pure Kotlin), `live-ui` (Compose), `live-voice` (LiveKit voice) | `./gradlew :live-core:test` etc.; needs `ANDROID_HOME` for the Android modules |
 
 Versions in `android/` match the notebook's `android/gradle/libs.versions.toml`
 on purpose; keep them in step.
@@ -94,7 +94,7 @@ fake microphones through it.
   forced camera refused by LiveKit); the Kotlin and Swift room clients against the real server
   (live tests, skipped unless `LIVE_SERVER_URL` is set).
 - **Compiled in CI but never run on a device:** `LiveUI` (SwiftUI +
-  PencilKit) and `SpaceNotesLiveVideo` (Xcode on macOS; both compiled first
+  PencilKit) and `SpaceNotesLiveVoice` (Xcode on macOS; both compiled first
   time), the Compose screen and the Android LiveKit provider (Gradle, lint
   clean). CI (`.github/workflows/ci.yml`) was green on all four jobs at
   commit 0b22734.

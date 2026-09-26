@@ -37,7 +37,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
 
-    implementation(platform(libs.compose.bom))
+    // api, so modules that see Compose through this one also get its versions.
+    api(platform(libs.compose.bom))
     api(libs.compose.ui)
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.foundation)

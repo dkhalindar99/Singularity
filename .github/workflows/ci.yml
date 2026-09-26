@@ -76,5 +76,5 @@ jobs:
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" "platforms;android-37.0" "build-tools;37.0.0"
       - name: Test and build
-        run: ./gradlew :live-core:test :live-ui:testDebugUnitTest :live-ui:assembleDebug :live-video:assembleDebug :live-ui:lintDebug :live-video:lintDebug
+        run: ./gradlew :live-core:test :live-ui:testDebugUnitTest :live-ui:assembleDebug :live-voice:assembleDebug :live-ui:lintDebug :live-voice:lintDebug
         working-directory: android

@@ -1,7 +1,7 @@
 # SpaceNotes Live — Android
 
 The Android client of SpaceNotes Live: one student hosts a shared notebook,
-friends join with camera and voice tiles, and everyone's ink and text appear
+friends join by voice (no cameras: ink and voice only, for cost and privacy), and everyone's ink and text appear
 on everyone's page as it is drawn. The contract with the server and the other
 clients is `../protocol/PROTOCOL.md`; `../fixtures/protocol/` is its
 executable form, and the tests here read those files from disk.
@@ -11,8 +11,8 @@ executable form, and the tests here read those files from disk.
 | Module | Kind | What it holds |
 |---|---|---|
 | `live-core` | Kotlin/JVM, no Android | Protocol types (JSON-identical to the notebook's `PortableStroke`), the reducer, permissions, `RoomClient` (WebSocket, optimistic ops, reconnect, undo/redo, presence), `LiveInkStreamer`, `LiveApi` (HTTP), and eraser/fit geometry. kotlinx.serialization, kotlinx.coroutines, OkHttp. |
-| `live-ui` | Android library, Compose + Material 3, minSdk 26 | `LiveRoomScreen` (participant tiles, the shared page, toolbar, page navigation, Follow host, people sheet with host controls, raise hand, leave/end), `LivePageCanvas`, `LiveLobby` (join by code, host this notebook), `LiveTheme`, and the seams `LiveVideoProvider` and `LiveNotebookSource`. Does not depend on LiveKit. |
-| `live-video` | Android library | `LiveKitVideoProvider`, the `LiveVideoProvider` over LiveKit's official Android SDK (`io.livekit:livekit-android` 2.29.0, Apache 2.0): mic on and camera off at the start, 180p or 360p capture, simulcast (a 180p layer under 360p), adaptive stream and dynacast, a `TextureViewRenderer` per tile. |
+| `live-ui` | Android library, Compose + Material 3, minSdk 26 | `LiveRoomScreen` (participant tiles, the shared page, toolbar, page navigation, Follow host, people sheet with host controls, raise hand, leave/end), `LivePageCanvas`, `LiveLobby` (join by code, host this notebook), `LiveTheme`, and the seams `LiveVoiceProvider` and `LiveNotebookSource`. Does not depend on LiveKit. |
+| `live-voice` | Android library | `LiveKitVoiceProvider`, the `LiveVoiceProvider` over LiveKit's official Android SDK (`io.livekit:livekit-android` 2.29.0, Apache 2.0): voice only, microphone on at the start when allowed, mute, who is speaking. Never publishes a camera (the server's ticket allows only a microphone), and its manifest removes the camera and screen-sharing permissions LiveKit's own manifest asks for. |
 
 Versions follow the notebook's own catalogue (`notebook/android/gradle/libs.versions.toml`):
 Gradle 9.6.0 (wrapper), AGP 9.4.1 with its built-in Kotlin, Kotlin 2.4.20,
@@ -25,7 +25,7 @@ OkHttp 5.2.1, compileSdk 37, JDK 21.
 cd android
 ./gradlew :live-core:test                  # no Android SDK needed
 ./gradlew :live-ui:testDebugUnitTest       # needs the SDK
-./gradlew :live-ui:assembleDebug :live-video:assembleDebug
+./gradlew :live-ui:assembleDebug :live-voice:assembleDebug
 ```
 
 The Android modules need an SDK with `platforms;android-37.0`: set
@@ -57,7 +57,7 @@ What `live-core`'s tests cover:
   stroke never comes or their sender leaves; an op over ~1,000 KiB dropped
   locally as a `too-large` reject (never pending, never an undo step), while
   a full 5,000-point stroke still fits one frame;
-- `LiveApi` against a local HTTP server (create, lookup and its 404, video
+- `LiveApi` against a local HTTP server (create, lookup and its 404, voice
   ticket and its 503, asset upload and download, snapshot, errors);
 - `LiveServerTest`: a host and a guest, both real `RoomClient`s over OkHttp
   WebSockets, against the real room server in `../server` (skipped unless
@@ -80,10 +80,10 @@ What `live-core`'s tests cover:
    modules from the notebook's `android/settings.gradle.kts`:
 
    ```kotlin
-   include(":live-core", ":live-ui", ":live-video")
+   include(":live-core", ":live-ui", ":live-voice")
    project(":live-core").projectDir = file("../../Singularity/android/live-core")
    project(":live-ui").projectDir = file("../../Singularity/android/live-ui")
-   project(":live-video").projectDir = file("../../Singularity/android/live-video")
+   project(":live-voice").projectDir = file("../../Singularity/android/live-voice")
    ```
 
    and add to its `dependencyResolutionManagement.repositories` the JitPack
@@ -100,8 +100,8 @@ What `live-core`'s tests cover:
    assets by `LiveApi.hostRoom`).
 
 3. Show `LiveLobby(api, source, onJoin, onHosted, theme = …)`, then
-   `LiveRoomScreen(client, api, onSessionEnded, videoProvider =
-   LiveKitVideoProvider(context), theme = …)`. Build a `LiveTheme` from
+   `LiveRoomScreen(client, api, onSessionEnded, voiceProvider =
+   LiveKitVoiceProvider(context), theme = …)`. Build a `LiveTheme` from
    `Theme.swift`'s faded-indigo tokens as the notebook's own Compose theme
    has them. Hold the `RoomClient` in a ViewModel so a rotation does not
    leave the room (`rememberRoomClient` is the simple version that does).
@@ -126,7 +126,7 @@ Built and tested on Linux with JDK 21, Gradle 9.6.0 and Android SDK platform
   failure. It found, and now guards, a race where `Connected` was
   published a moment before the welcome's state.
 - `./gradlew :live-ui:testDebugUnitTest` — passes (room codes, colours).
-- `./gradlew :live-ui:assembleDebug :live-video:assembleDebug` — both AARs
+- `./gradlew :live-ui:assembleDebug :live-voice:assembleDebug` — both AARs
   build with no compiler warnings; `lintDebug` reports no issues in either.
 
 Not verified:
@@ -135,8 +135,8 @@ Not verified:
   and stylus input (historical points, pressure, hover, stylus-only), text
   editing, the people sheet and the permission prompts have been compiled
   but never seen or touched.
-- `LiveKitVideoProvider` has never joined a LiveKit room: camera, microphone,
-  simulcast, rendering and speaking indicators are unexercised.
+- `LiveKitVoiceProvider` has never joined a LiveKit room: the microphone,
+  mute and speaking indicators are unexercised.
 - `RoomClient` has only met the local dev server, not a deployed one behind
   Cloud Run (its 60-minute socket limit and real Firebase tokens).
 - No Compose UI tests or screenshot tests exist yet.

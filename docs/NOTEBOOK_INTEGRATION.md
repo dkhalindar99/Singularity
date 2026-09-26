@@ -8,12 +8,12 @@ It follows the TeachDraw pattern exactly: develop here, vendor a copy there.
 
 1. **Vendor.** Add `notebook/scripts/sync-spacenotes-live.sh`, a copy of
    `sync-teachdraw.sh` that copies `ios/SpaceNotesLive/` (and, separately,
-   `ios/SpaceNotesLiveVideo/`) into `notebook/SpaceNotesLive/` and
-   `notebook/SpaceNotesLiveVideo/`, plus `LICENSE`, `NOTICE.md`, the protocol
+   `ios/SpaceNotesLiveVoice/`) into `notebook/SpaceNotesLive/` and
+   `notebook/SpaceNotesLiveVoice/`, plus `LICENSE`, `NOTICE.md`, the protocol
    and the fixtures (the package's tests read them by path), and records the
    commit in `VENDORED.md`.
 2. **project.yml.** Add both as local `packages:` entries and the products
-   `LiveCore`, `LiveUI` and `SpaceNotesLiveVideo` to the app target; run
+   `LiveCore`, `LiveUI` and `SpaceNotesLiveVoice` to the app target; run
    XcodeGen.
 3. **Seams the notebook supplies** (all in `Notebook/Live/`, never inside the
    vendored folder):
@@ -41,7 +41,7 @@ It follows the TeachDraw pattern exactly: develop here, vendor a copy there.
 
 ## Android
 
-The same, with `android/live-core`, `live-ui` and `live-video` as Gradle
+The same, with `android/live-core`, `live-ui` and `live-voice` as Gradle
 modules included from the notebook's `android/settings.gradle.kts`, and the
 notebook's `core` `PortableStroke` mapped the same way (same JSON). App Links
 need `assetlinks.json` served by the room server.
