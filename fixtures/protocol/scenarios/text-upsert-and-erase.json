@@ -1,0 +1,157 @@
+{
+  "name": "text-upsert-and-erase",
+  "description": "An edit by someone else keeps the original author and seq. Upserting an erased text brings it back.",
+  "initial": {
+    "protocol": 1,
+    "seq": 0,
+    "drawPolicy": "everyone",
+    "penHolder": null,
+    "hostPageId": "00000001-0000-4000-8000-000000000001",
+    "pages": [
+      {
+        "id": "00000001-0000-4000-8000-000000000001",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "blank"
+        },
+        "strokes": [],
+        "texts": []
+      }
+    ]
+  },
+  "ops": [
+    {
+      "seq": 1,
+      "author": "uid-asha",
+      "clientOpId": "a:1",
+      "op": {
+        "kind": "text.upsert",
+        "pageId": "00000001-0000-4000-8000-000000000001",
+        "text": {
+          "id": "0000000B-0000-4000-8000-000000000001",
+          "text": "Lithium — narrow therapeutic index",
+          "frame": {
+            "x": 40,
+            "y": 320,
+            "width": 260,
+            "height": 64
+          },
+          "fontSize": 18,
+          "color": {
+            "r": 0.15,
+            "g": 0.18,
+            "b": 0.22,
+            "a": 1
+          }
+        }
+      }
+    },
+    {
+      "seq": 2,
+      "author": "uid-ravi",
+      "clientOpId": "r:1",
+      "op": {
+        "kind": "text.upsert",
+        "pageId": "00000001-0000-4000-8000-000000000001",
+        "text": {
+          "id": "0000000B-0000-4000-8000-000000000001",
+          "text": "Lithium — check levels",
+          "frame": {
+            "x": 40,
+            "y": 320,
+            "width": 260,
+            "height": 64
+          },
+          "fontSize": 20,
+          "color": {
+            "r": 0.15,
+            "g": 0.18,
+            "b": 0.22,
+            "a": 1
+          }
+        }
+      }
+    },
+    {
+      "seq": 3,
+      "author": "uid-ravi",
+      "clientOpId": "r:2",
+      "op": {
+        "kind": "text.erase",
+        "pageId": "00000001-0000-4000-8000-000000000001",
+        "textIds": [
+          "0000000B-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    {
+      "seq": 4,
+      "author": "uid-asha",
+      "clientOpId": "a:2",
+      "op": {
+        "kind": "text.upsert",
+        "pageId": "00000001-0000-4000-8000-000000000001",
+        "text": {
+          "id": "0000000B-0000-4000-8000-000000000001",
+          "text": "Lithium — back again",
+          "frame": {
+            "x": 40,
+            "y": 320,
+            "width": 260,
+            "height": 64
+          },
+          "fontSize": 18,
+          "color": {
+            "r": 0.15,
+            "g": 0.18,
+            "b": 0.22,
+            "a": 1
+          }
+        }
+      }
+    }
+  ],
+  "expected": {
+    "protocol": 1,
+    "seq": 4,
+    "drawPolicy": "everyone",
+    "penHolder": null,
+    "hostPageId": "00000001-0000-4000-8000-000000000001",
+    "pages": [
+      {
+        "id": "00000001-0000-4000-8000-000000000001",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "blank"
+        },
+        "strokes": [],
+        "texts": [
+          {
+            "author": "uid-asha",
+            "seq": 1,
+            "erased": false,
+            "text": {
+              "id": "0000000B-0000-4000-8000-000000000001",
+              "text": "Lithium — back again",
+              "frame": {
+                "x": 40,
+                "y": 320,
+                "width": 260,
+                "height": 64
+              },
+              "fontSize": 18,
+              "color": {
+                "r": 0.15,
+                "g": 0.18,
+                "b": 0.22,
+                "a": 1
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

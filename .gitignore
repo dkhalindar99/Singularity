@@ -1,0 +1,11 @@
+node_modules/
+.live-data/
+.DS_Store
+*.xcodeproj
+.build/
+.swiftpm/
+.gradle/
+build/
+local.properties
+.env
+.env.*

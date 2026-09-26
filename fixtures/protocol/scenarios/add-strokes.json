@@ -1,0 +1,258 @@
+{
+  "name": "add-strokes",
+  "description": "Two people add strokes. A resent stroke.add with an id already on the page changes nothing but seq.",
+  "initial": {
+    "protocol": 1,
+    "seq": 0,
+    "drawPolicy": "everyone",
+    "penHolder": null,
+    "hostPageId": "00000001-0000-4000-8000-000000000001",
+    "pages": [
+      {
+        "id": "00000001-0000-4000-8000-000000000001",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "blank"
+        },
+        "strokes": [],
+        "texts": []
+      }
+    ]
+  },
+  "ops": [
+    {
+      "seq": 1,
+      "author": "uid-asha",
+      "clientOpId": "a:1",
+      "op": {
+        "kind": "stroke.add",
+        "pageId": "00000001-0000-4000-8000-000000000001",
+        "stroke": {
+          "id": "0000000A-0000-4000-8000-000000000001",
+          "ink": "pen",
+          "color": {
+            "r": 0.1,
+            "g": 0.2,
+            "b": 0.3,
+            "a": 1
+          },
+          "width": 2.5,
+          "createdAt": "2026-01-02T03:04:05Z",
+          "points": [
+            {
+              "x": 10,
+              "y": 20,
+              "pressure": 0.5,
+              "timeOffset": 0,
+              "width": 2,
+              "azimuth": 0.25,
+              "altitude": 1.1
+            },
+            {
+              "x": 30.5,
+              "y": 41.25,
+              "pressure": 1.75,
+              "timeOffset": 0.016,
+              "width": 2.5,
+              "azimuth": 0.3,
+              "altitude": 1.2
+            },
+            {
+              "x": 50,
+              "y": 60,
+              "pressure": 0.25,
+              "timeOffset": 0.032,
+              "width": 3
+            }
+          ],
+          "captureStamp": 1767322445.123456
+        }
+      }
+    },
+    {
+      "seq": 2,
+      "author": "uid-ravi",
+      "clientOpId": "r:1",
+      "op": {
+        "kind": "stroke.add",
+        "pageId": "00000001-0000-4000-8000-000000000001",
+        "stroke": {
+          "id": "0000000a-0000-4000-8000-000000000002",
+          "ink": "marker",
+          "color": {
+            "r": 1,
+            "g": 0.9,
+            "b": 0.2,
+            "a": 0.35
+          },
+          "width": 12,
+          "createdAt": "2026-01-02T03:04:06Z",
+          "points": [
+            {
+              "x": 0.1,
+              "y": 100,
+              "pressure": 1,
+              "timeOffset": 0,
+              "width": 12
+            },
+            {
+              "x": 200,
+              "y": 100.5,
+              "pressure": 1,
+              "timeOffset": 0.1,
+              "width": 12
+            }
+          ]
+        }
+      }
+    },
+    {
+      "seq": 3,
+      "author": "uid-asha",
+      "clientOpId": "a:2",
+      "op": {
+        "kind": "stroke.add",
+        "pageId": "00000001-0000-4000-8000-000000000001",
+        "stroke": {
+          "id": "0000000A-0000-4000-8000-000000000001",
+          "ink": "pen",
+          "color": {
+            "r": 0.1,
+            "g": 0.2,
+            "b": 0.3,
+            "a": 1
+          },
+          "width": 99,
+          "createdAt": "2026-01-02T03:04:05Z",
+          "points": [
+            {
+              "x": 10,
+              "y": 20,
+              "pressure": 0.5,
+              "timeOffset": 0,
+              "width": 2,
+              "azimuth": 0.25,
+              "altitude": 1.1
+            },
+            {
+              "x": 30.5,
+              "y": 41.25,
+              "pressure": 1.75,
+              "timeOffset": 0.016,
+              "width": 2.5,
+              "azimuth": 0.3,
+              "altitude": 1.2
+            },
+            {
+              "x": 50,
+              "y": 60,
+              "pressure": 0.25,
+              "timeOffset": 0.032,
+              "width": 3
+            }
+          ],
+          "captureStamp": 1767322445.123456
+        }
+      }
+    }
+  ],
+  "expected": {
+    "protocol": 1,
+    "seq": 3,
+    "drawPolicy": "everyone",
+    "penHolder": null,
+    "hostPageId": "00000001-0000-4000-8000-000000000001",
+    "pages": [
+      {
+        "id": "00000001-0000-4000-8000-000000000001",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "blank"
+        },
+        "strokes": [
+          {
+            "author": "uid-asha",
+            "seq": 1,
+            "erased": false,
+            "stroke": {
+              "id": "0000000A-0000-4000-8000-000000000001",
+              "ink": "pen",
+              "color": {
+                "r": 0.1,
+                "g": 0.2,
+                "b": 0.3,
+                "a": 1
+              },
+              "width": 2.5,
+              "createdAt": "2026-01-02T03:04:05Z",
+              "points": [
+                {
+                  "x": 10,
+                  "y": 20,
+                  "pressure": 0.5,
+                  "timeOffset": 0,
+                  "width": 2,
+                  "azimuth": 0.25,
+                  "altitude": 1.1
+                },
+                {
+                  "x": 30.5,
+                  "y": 41.25,
+                  "pressure": 1.75,
+                  "timeOffset": 0.016,
+                  "width": 2.5,
+                  "azimuth": 0.3,
+                  "altitude": 1.2
+                },
+                {
+                  "x": 50,
+                  "y": 60,
+                  "pressure": 0.25,
+                  "timeOffset": 0.032,
+                  "width": 3
+                }
+              ],
+              "captureStamp": 1767322445.123456
+            }
+          },
+          {
+            "author": "uid-ravi",
+            "seq": 2,
+            "erased": false,
+            "stroke": {
+              "id": "0000000a-0000-4000-8000-000000000002",
+              "ink": "marker",
+              "color": {
+                "r": 1,
+                "g": 0.9,
+                "b": 0.2,
+                "a": 0.35
+              },
+              "width": 12,
+              "createdAt": "2026-01-02T03:04:06Z",
+              "points": [
+                {
+                  "x": 0.1,
+                  "y": 100,
+                  "pressure": 1,
+                  "timeOffset": 0,
+                  "width": 12
+                },
+                {
+                  "x": 200,
+                  "y": 100.5,
+                  "pressure": 1,
+                  "timeOffset": 0.1,
+                  "width": 12
+                }
+              ]
+            }
+          }
+        ],
+        "texts": []
+      }
+    ]
+  }
+}

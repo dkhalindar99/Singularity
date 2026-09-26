@@ -1,0 +1,16 @@
+{
+  "name": "@spacenotes/live",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SpaceNotes Live for the web: the room protocol, the reducer, the room client, the shared-notebook canvas and the video tiles.",
+  "license": "SEE LICENSE IN ../LICENSE",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "exports": {
+    "./core": "./src/core/index.js",
+    "./client": "./src/client/room-client.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}

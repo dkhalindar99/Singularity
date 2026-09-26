@@ -1,0 +1,14 @@
+{
+  "name": "spacenotes-live-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SpaceNotes Live room server: orders and checks every change to a shared notebook, relays live ink and presence, and issues LiveKit tickets.",
+  "license": "SEE LICENSE IN ../LICENSE",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "LIVE_DEV_AUTH=1 LIVE_DATA_DIR=.live-data node src/server.js",
+    "test": "node --test --test-force-exit"
+  }
+}

@@ -1,0 +1,147 @@
+{
+  "name": "pages-and-policy",
+  "description": "Pages insert after the named page, or at the end. Duplicate pages are ignored. host.page ignores unknown pages. room.policy without penHolder clears it.",
+  "initial": {
+    "protocol": 1,
+    "seq": 0,
+    "drawPolicy": "everyone",
+    "penHolder": null,
+    "hostPageId": "00000001-0000-4000-8000-000000000001",
+    "pages": [
+      {
+        "id": "00000001-0000-4000-8000-000000000001",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "blank"
+        },
+        "strokes": [],
+        "texts": []
+      },
+      {
+        "id": "00000001-0000-4000-8000-000000000002",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "blank"
+        },
+        "strokes": [],
+        "texts": []
+      }
+    ]
+  },
+  "ops": [
+    {
+      "seq": 1,
+      "author": "uid-host",
+      "clientOpId": "h:1",
+      "op": {
+        "kind": "page.add",
+        "page": {
+          "id": "00000001-0000-4000-8000-000000000003",
+          "width": 595,
+          "height": 842,
+          "background": {
+            "kind": "template",
+            "template": "grid"
+          }
+        },
+        "afterPageId": "00000001-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "seq": 2,
+      "author": "uid-host",
+      "clientOpId": "h:2",
+      "op": {
+        "kind": "page.add",
+        "page": {
+          "id": "00000001-0000-4000-8000-000000000003",
+          "width": 1,
+          "height": 842,
+          "background": {
+            "kind": "blank"
+          }
+        },
+        "afterPageId": null
+      }
+    },
+    {
+      "seq": 3,
+      "author": "uid-host",
+      "clientOpId": "h:3",
+      "op": {
+        "kind": "host.page",
+        "pageId": "00000001-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "seq": 4,
+      "author": "uid-host",
+      "clientOpId": "h:4",
+      "op": {
+        "kind": "host.page",
+        "pageId": "no-such-page"
+      }
+    },
+    {
+      "seq": 5,
+      "author": "uid-host",
+      "clientOpId": "h:5",
+      "op": {
+        "kind": "room.policy",
+        "drawPolicy": "pen",
+        "penHolder": "uid-asha"
+      }
+    },
+    {
+      "seq": 6,
+      "author": "uid-host",
+      "clientOpId": "h:6",
+      "op": {
+        "kind": "room.policy",
+        "drawPolicy": "host"
+      }
+    }
+  ],
+  "expected": {
+    "protocol": 1,
+    "seq": 6,
+    "drawPolicy": "host",
+    "penHolder": null,
+    "hostPageId": "00000001-0000-4000-8000-000000000003",
+    "pages": [
+      {
+        "id": "00000001-0000-4000-8000-000000000001",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "blank"
+        },
+        "strokes": [],
+        "texts": []
+      },
+      {
+        "id": "00000001-0000-4000-8000-000000000003",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "template",
+          "template": "grid"
+        },
+        "strokes": [],
+        "texts": []
+      },
+      {
+        "id": "00000001-0000-4000-8000-000000000002",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "blank"
+        },
+        "strokes": [],
+        "texts": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "name": "page-add-unknown-anchor",
+  "description": "An afterPageId that does not exist appends at the end.",
+  "initial": {
+    "protocol": 1,
+    "seq": 0,
+    "drawPolicy": "everyone",
+    "penHolder": null,
+    "hostPageId": "00000001-0000-4000-8000-000000000001",
+    "pages": [
+      {
+        "id": "00000001-0000-4000-8000-000000000001",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "blank"
+        },
+        "strokes": [],
+        "texts": []
+      }
+    ]
+  },
+  "ops": [
+    {
+      "seq": 1,
+      "author": "uid-host",
+      "clientOpId": "h:1",
+      "op": {
+        "kind": "page.add",
+        "page": {
+          "id": "00000001-0000-4000-8000-000000000002",
+          "width": 595,
+          "height": 842,
+          "background": {
+            "kind": "image",
+            "assetId": "asset-7"
+          }
+        },
+        "afterPageId": "missing"
+      }
+    }
+  ],
+  "expected": {
+    "protocol": 1,
+    "seq": 1,
+    "drawPolicy": "everyone",
+    "penHolder": null,
+    "hostPageId": "00000001-0000-4000-8000-000000000001",
+    "pages": [
+      {
+        "id": "00000001-0000-4000-8000-000000000001",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "blank"
+        },
+        "strokes": [],
+        "texts": []
+      },
+      {
+        "id": "00000001-0000-4000-8000-000000000002",
+        "width": 595,
+        "height": 842,
+        "background": {
+          "kind": "image",
+          "assetId": "asset-7"
+        },
+        "strokes": [],
+        "texts": []
+      }
+    ]
+  }
+}

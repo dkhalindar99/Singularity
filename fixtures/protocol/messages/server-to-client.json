@@ -1,0 +1,301 @@
+{
+  "description": "Every server frame a client must decode. 'unknown-type' must be ignored without error; extra fields must be ignored.",
+  "messages": {
+    "welcome": {
+      "type": "welcome",
+      "protocol": 1,
+      "you": {
+        "uid": "uid-asha",
+        "connectionId": "c2",
+        "name": "Asha",
+        "role": "guest",
+        "color": "#E4572E"
+      },
+      "room": {
+        "id": "room-1",
+        "code": "K7QM3X",
+        "title": "Cardiology — lecture 4",
+        "hostUid": "uid-host"
+      },
+      "state": {
+        "protocol": 1,
+        "seq": 1,
+        "drawPolicy": "everyone",
+        "penHolder": null,
+        "hostPageId": "00000001-0000-4000-8000-000000000001",
+        "pages": [
+          {
+            "id": "00000001-0000-4000-8000-000000000001",
+            "width": 595,
+            "height": 842,
+            "background": {
+              "kind": "blank"
+            },
+            "strokes": [
+              {
+                "author": "uid-host",
+                "seq": 1,
+                "erased": false,
+                "stroke": {
+                  "id": "0000000A-0000-4000-8000-000000000001",
+                  "ink": "pen",
+                  "color": {
+                    "r": 0.1,
+                    "g": 0.2,
+                    "b": 0.3,
+                    "a": 1
+                  },
+                  "width": 2.5,
+                  "createdAt": "2026-01-02T03:04:05Z",
+                  "points": [
+                    {
+                      "x": 10,
+                      "y": 20,
+                      "pressure": 0.5,
+                      "timeOffset": 0,
+                      "width": 2,
+                      "azimuth": 0.25,
+                      "altitude": 1.1
+                    },
+                    {
+                      "x": 30.5,
+                      "y": 41.25,
+                      "pressure": 1.75,
+                      "timeOffset": 0.016,
+                      "width": 2.5,
+                      "azimuth": 0.3,
+                      "altitude": 1.2
+                    },
+                    {
+                      "x": 50,
+                      "y": 60,
+                      "pressure": 0.25,
+                      "timeOffset": 0.032,
+                      "width": 3
+                    }
+                  ],
+                  "captureStamp": 1767322445.123456
+                }
+              }
+            ],
+            "texts": [
+              {
+                "author": "uid-host",
+                "seq": 0,
+                "erased": false,
+                "text": {
+                  "id": "0000000B-0000-4000-8000-000000000001",
+                  "text": "Lithium — narrow therapeutic index",
+                  "frame": {
+                    "x": 40,
+                    "y": 320,
+                    "width": 260,
+                    "height": 64
+                  },
+                  "fontSize": 18,
+                  "color": {
+                    "r": 0.15,
+                    "g": 0.18,
+                    "b": 0.22,
+                    "a": 1
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "members": [
+        {
+          "uid": "uid-host",
+          "connectionId": "c1",
+          "name": "Host",
+          "role": "host",
+          "color": "#3B5BDB",
+          "handRaised": false,
+          "pageId": "00000001-0000-4000-8000-000000000001"
+        },
+        {
+          "uid": "uid-asha",
+          "connectionId": "c2",
+          "name": "Asha",
+          "role": "guest",
+          "color": "#E4572E",
+          "handRaised": false,
+          "pageId": "00000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    "op": {
+      "type": "op",
+      "seq": 13,
+      "author": "uid-asha",
+      "clientOpId": "ipad-7F3A:42",
+      "op": {
+        "kind": "stroke.erase",
+        "pageId": "00000001-0000-4000-8000-000000000001",
+        "strokeIds": [
+          "0000000A-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    "reject": {
+      "type": "reject",
+      "clientOpId": "ipad-7F3A:43",
+      "reason": "drawing-locked"
+    },
+    "members": {
+      "type": "members",
+      "members": [
+        {
+          "uid": "uid-host",
+          "connectionId": "c1",
+          "name": "Host",
+          "role": "host",
+          "color": "#3B5BDB",
+          "handRaised": true,
+          "pageId": "00000001-0000-4000-8000-000000000002"
+        }
+      ]
+    },
+    "presence-ink-live": {
+      "type": "presence",
+      "from": {
+        "uid": "uid-asha",
+        "connectionId": "c2"
+      },
+      "presence": {
+        "kind": "ink.live",
+        "pageId": "00000001-0000-4000-8000-000000000001",
+        "liveId": "0000000A-0000-4000-8000-000000000001",
+        "ink": "pen",
+        "color": {
+          "r": 0.1,
+          "g": 0.2,
+          "b": 0.3,
+          "a": 1
+        },
+        "width": 2.5,
+        "p": [
+          10,
+          20,
+          2,
+          30.5,
+          41.3,
+          2.5
+        ],
+        "done": false
+      }
+    },
+    "presence-pointer": {
+      "type": "presence",
+      "from": {
+        "uid": "uid-ravi",
+        "connectionId": "c3"
+      },
+      "presence": {
+        "kind": "pointer",
+        "pageId": "00000001-0000-4000-8000-000000000001",
+        "x": 120.5,
+        "y": 300,
+        "laser": true
+      }
+    },
+    "presence-pointer-hide": {
+      "type": "presence",
+      "from": {
+        "uid": "uid-ravi",
+        "connectionId": "c3"
+      },
+      "presence": {
+        "kind": "pointer.hide"
+      }
+    },
+    "presence-view": {
+      "type": "presence",
+      "from": {
+        "uid": "uid-ravi",
+        "connectionId": "c3"
+      },
+      "presence": {
+        "kind": "view",
+        "pageId": "00000001-0000-4000-8000-000000000002"
+      }
+    },
+    "presence-hand": {
+      "type": "presence",
+      "from": {
+        "uid": "uid-ravi",
+        "connectionId": "c3"
+      },
+      "presence": {
+        "kind": "hand",
+        "raised": true
+      }
+    },
+    "removed": {
+      "type": "removed",
+      "reason": "removed-by-host"
+    },
+    "error": {
+      "type": "error",
+      "code": "no-such-room",
+      "message": "That room has ended."
+    },
+    "pong": {
+      "type": "pong",
+      "t": 123
+    },
+    "unknown-type": {
+      "type": "confetti",
+      "colour": "gold"
+    },
+    "welcome-with-extra-fields": {
+      "type": "welcome",
+      "protocol": 1,
+      "futureTopLevel": {
+        "anything": [
+          1,
+          2,
+          3
+        ]
+      },
+      "you": {
+        "uid": "uid-asha",
+        "connectionId": "c2",
+        "name": "Asha",
+        "role": "guest",
+        "color": "#E4572E",
+        "futureFlag": true
+      },
+      "room": {
+        "id": "room-1",
+        "code": "K7QM3X",
+        "title": "Extra fields",
+        "hostUid": "uid-host",
+        "futureRoomField": 5
+      },
+      "state": {
+        "protocol": 1,
+        "seq": 0,
+        "drawPolicy": "everyone",
+        "penHolder": null,
+        "hostPageId": "00000001-0000-4000-8000-000000000001",
+        "pages": [
+          {
+            "id": "00000001-0000-4000-8000-000000000001",
+            "width": 595,
+            "height": 842,
+            "background": {
+              "kind": "hologram",
+              "depth": 3
+            },
+            "strokes": [],
+            "texts": []
+          }
+        ]
+      },
+      "members": []
+    }
+  }
+}

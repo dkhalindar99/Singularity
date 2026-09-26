@@ -1,0 +1,58 @@
+SpaceNotes Live — Proprietary Software Licence
+
+Copyright (c) 2026 Pillikandla Dada Khalindar. All rights reserved.
+
+"SpaceNotes Live" means the software in this repository: the room protocol
+and its fixtures (protocol/, fixtures/), the Swift packages (ios/), the
+Android libraries (android/), the web package (web/), the room server
+(server/), the tests and the documentation, in source or compiled form, and
+any copies or parts of it.
+
+1. OWNERSHIP. SpaceNotes Live is owned by Pillikandla Dada Khalindar ("the
+   Owner") and is protected by copyright and other intellectual-property
+   laws. It is licensed, not sold.
+
+2. NO RIGHTS WITHOUT A LICENCE. No one may use, copy, modify, merge,
+   publish, distribute, sublicense, sell, host as a service, or create
+   derivative works of SpaceNotes Live, in whole or in part, except under a
+   written licence agreement signed by the Owner (a "Commercial Licence").
+   Possessing a copy of SpaceNotes Live grants no rights.
+
+3. COMMERCIAL LICENCES. The rights a licensee receives — which products,
+   how many apps or users, for how long, and whether source code is
+   included — are exactly those stated in its Commercial Licence, and
+   nothing more. Unless a Commercial Licence expressly says otherwise, a
+   licensee may not: resell, share or redistribute SpaceNotes Live or its source
+   code; use it to build a product that competes with SpaceNotes Live; remove or
+   alter this notice or any copyright notice; or reverse-engineer any part
+   provided in compiled form.
+
+4. CONFIDENTIALITY. The source code, protocol and documentation are
+   confidential information of the Owner.
+
+5. THIRD-PARTY SERVICES. SpaceNotes Live calls services provided by others (see
+   NOTICE.md). They are not part of this licence. Each licensee must obtain
+   its own accounts and keys and comply with those providers' terms.
+
+6. PEOPLE'S DATA. A licensee that runs SpaceNotes Live carries voices,
+   faces, handwriting and names between people. The licensee is responsible
+   for the consent, age checks and retention rules the law of its users
+   requires, including India's Digital Personal Data Protection Act.
+
+7. NO WARRANTY. SpaceNotes Live is provided "as is", without warranty of any
+   kind, express or implied, including merchantability, fitness for a
+   particular purpose, accuracy and non-infringement, except as a signed
+   Commercial Licence expressly provides.
+
+8. LIMITATION OF LIABILITY. To the maximum extent permitted by law, the
+   Owner is not liable for any indirect, incidental, special, consequential
+   or punitive damages, or for loss of data, profits or revenue, arising
+   from SpaceNotes Live or its use, and the Owner's total liability is limited to
+   the fees paid under the applicable Commercial Licence in the twelve
+   months before the claim.
+
+9. TERMINATION. Any use outside a Commercial Licence, or any breach of one,
+   ends the right to use SpaceNotes Live immediately; all copies must then be
+   deleted.
+
+To ask about a Commercial Licence, contact: dkhalindar06@gmail.com
