@@ -1,0 +1,6 @@
+// Committed on purpose: project.yml points here, and this pulls in your own
+// Local.xcconfig when it exists. The `?` makes the include optional, so CI
+// (which builds with CODE_SIGNING_ALLOWED=NO) and a fresh clone still build.
+#include? "Local.xcconfig"
+
+CODE_SIGN_STYLE = Automatic

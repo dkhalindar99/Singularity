@@ -1,0 +1,75 @@
+# SpaceNotes Live demo app: a tiny iPad (and iPhone) app for trying SpaceNotes
+# Live on a real device with a free Apple ID. Generate the Xcode project with
+# `xcodegen generate` in this folder; see ios/README.md, "How to try it on
+# your iPad".
+name: SpaceNotesLiveDemo
+options:
+  bundleIdPrefix: com.spacenotes
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  SpaceNotesLive:
+    path: ../SpaceNotesLive
+  SpaceNotesLiveVoice:
+    path: ../SpaceNotesLiveVoice
+targets:
+  SpaceNotes Live Demo:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources
+    # Signing comes from Local.xcconfig (through Signing.xcconfig) so it
+    # survives `xcodegen generate`, which regenerates the gitignored
+    # .xcodeproj and would otherwise discard what Xcode's Signing tab sets.
+    configFiles:
+      Debug: Signing.xcconfig
+      Release: Signing.xcconfig
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2" # iPhone and iPad
+        PRODUCT_BUNDLE_IDENTIFIER: com.spacenotes.live.demo
+        PRODUCT_NAME: SpaceNotes Live Demo
+        SWIFT_VERSION: "5.0"
+        SUPPORTS_MACCATALYST: false
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: false
+    info:
+      # Written by `xcodegen generate` from the properties below.
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: SpaceNotes Live
+        CFBundleName: SpaceNotes Live
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSMicrophoneUsageDescription: SpaceNotes Live uses the microphone so the people in your study room can hear you. You can mute at any time.
+        # iOS asks before an app talks to devices on the home network; the
+        # demo talks to a room server running on your computer.
+        NSLocalNetworkUsageDescription: SpaceNotes Live connects to the room server on your computer over your Wi-Fi.
+        # The dev server is plain http:// and ws:// on a 192.168.x.x address.
+        # This allows exactly that (local addresses only); everything else
+        # still needs https.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        # Keeps voice going for a while with the screen off or another app in
+        # front. SpaceNotes Live leaves voice after 2 minutes in the
+        # background to save money (VoiceIdlePolicy).
+        UIBackgroundModes:
+          - audio
+    dependencies:
+      - package: SpaceNotesLive
+        product: LiveCore
+      - package: SpaceNotesLive
+        product: LiveUI
+      - package: SpaceNotesLiveVoice
+        product: LiveVoice
+    # A shared scheme named after the target, for `xcodebuild -scheme`.
+    scheme: {}

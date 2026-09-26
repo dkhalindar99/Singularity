@@ -39,6 +39,7 @@ livekit-android = { module = "io.livekit:livekit-android", version.ref = "liveki
 junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

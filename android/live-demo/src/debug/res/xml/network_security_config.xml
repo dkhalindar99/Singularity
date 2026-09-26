@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: plain http:// and ws:// are allowed, so the demo can
+     reach a dev server such as http://192.168.1.10:8080 on home Wi-Fi.
+     Android's config cannot name IP ranges (an IP address matches only
+     itself), so this is limited by build type rather than by network. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

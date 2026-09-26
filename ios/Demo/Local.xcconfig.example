@@ -1,0 +1,14 @@
+// Local, per-machine build settings for the SpaceNotes Live demo.
+//
+// Copy this file to Local.xcconfig (which is gitignored) and put your Apple
+// Team ID below. With a free Apple ID it is shown in Xcode > Settings >
+// Accounts > your Apple ID > "Personal Team"; select the team there once, then
+// copy its ten-character ID, or pick the team in the target's Signing &
+// Capabilities tab and read it back from Build Settings > Development Team.
+//
+// Set it here rather than in Xcode's UI: the .xcodeproj is generated, and
+// `xcodegen generate` throws away anything set through the UI, while this
+// file survives. A Team ID is not a secret, but it is yours, so keep it out
+// of git.
+
+DEVELOPMENT_TEAM = ABCDE12345

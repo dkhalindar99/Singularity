@@ -47,3 +47,5 @@ include(":live-core")
 include(":live-ui")
 // Voice through LiveKit. SpaceNotes Live is ink and voice only: no cameras.
 include(":live-voice")
+// A small app to try SpaceNotes Live on a real tablet against a dev server.
+include(":live-demo")

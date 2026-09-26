@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Release builds: HTTPS only. The debug build replaces this file (see
+     src/debug/res/xml) so it can reach a dev server on home Wi-Fi. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
