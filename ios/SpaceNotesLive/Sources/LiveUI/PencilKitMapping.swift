@@ -2,6 +2,7 @@
 // Proprietary and confidential. Use is governed by the LICENSE file.
 
 #if canImport(UIKit) && canImport(PencilKit)
+import LiveCore
 import PencilKit
 import UIKit
 

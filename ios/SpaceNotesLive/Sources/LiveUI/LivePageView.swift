@@ -2,6 +2,7 @@
 // Proprietary and confidential. Use is governed by the LICENSE file.
 
 #if canImport(UIKit) && canImport(PencilKit)
+import LiveCore
 import PencilKit
 import SwiftUI
 import UIKit
@@ -29,12 +30,12 @@ struct LivePageView: View {
     var body: some View {
         GeometryReader { geometry in
             let scale = fitScale(in: geometry.size)
-            let size = CGSize(width: page.width * scale, height: page.height * scale)
+            let size = CGSize(width: pageSize.width * scale, height: pageSize.height * scale)
             ZStack(alignment: .topLeading) {
                 LivePageBackground(background: page.background, scale: scale, assets: assets)
                 LivePageCanvas(
                     strokes: page.visibleStrokes,
-                    pageSize: CGSize(width: page.width, height: page.height),
+                    pageSize: pageSize,
                     scale: scale,
                     tool: tools.pencilKitTool(canDraw: client.canDraw),
                     allowsFingerDrawing: tools.allowsFingerDrawing,
@@ -55,8 +56,10 @@ struct LivePageView: View {
                                   localLaser: localLaser,
                                   scale: scale)
                     .allowsHitTesting(false)
-                textLayer(scale: scale)
+                // Tools under the texts: the text being edited must get its
+                // own taps. Committed texts ignore touches.
                 toolLayer(scale: scale)
+                textLayer(scale: scale)
             }
             .frame(width: size.width, height: size.height)
             .clipShape(RoundedRectangle(cornerRadius: 4))
@@ -65,9 +68,12 @@ struct LivePageView: View {
         }
     }
 
+    private var pageSize: CGSize { CGSize(width: page.width, height: page.height) }
+
     private func fitScale(in available: CGSize) -> CGFloat {
-        guard page.width > 0, page.height > 0 else { return 1 }
-        return max(0.05, min(available.width / page.width, available.height / page.height))
+        guard pageSize.width > 0, pageSize.height > 0 else { return 1 }
+        let fit: CGFloat = min(available.width / pageSize.width, available.height / pageSize.height)
+        return max(0.05, fit)
     }
 
     // MARK: Ink
@@ -87,9 +93,10 @@ struct LivePageView: View {
             return
         }
         if let streamer = tools.streamer {
-            streamer.finish(LivePencilKit.liveStroke(from: pkStroke, id: streamer.liveId))
+            streamer.finish(LivePencilKit.liveStroke(from: pkStroke, id: streamer.liveId).limitedToMaximumPoints())
         } else {
-            client.addStroke(pageId: page.id, stroke: LivePencilKit.liveStroke(from: pkStroke, id: LiveIDs.make()))
+            client.addStroke(pageId: page.id,
+                             stroke: LivePencilKit.liveStroke(from: pkStroke, id: LiveIDs.make()).limitedToMaximumPoints())
         }
         tools.streamer = nil
     }
@@ -101,21 +108,21 @@ struct LivePageView: View {
         ZStack(alignment: .topLeading) {
             ForEach(page.visibleTexts.filter { $0.id != editing?.id }) { text in
                 Text(text.text)
-                    .font(theme.pageText(text.fontSize * scale))
+                    .font(theme.pageText(CGFloat(text.fontSize) * scale))
                     .foregroundColor(Color(live: text.color))
-                    .frame(width: text.frame.width * scale, height: text.frame.height * scale, alignment: .topLeading)
-                    .offset(x: text.frame.x * scale, y: text.frame.y * scale)
+                    .frame(width: CGFloat(text.frame.width) * scale, height: CGFloat(text.frame.height) * scale, alignment: .topLeading)
+                    .offset(x: CGFloat(text.frame.x) * scale, y: CGFloat(text.frame.y) * scale)
                     .allowsHitTesting(false)
             }
             if let editing {
                 TextField("Text", text: $draft, axis: .vertical)
-                    .font(theme.pageText(editing.fontSize * scale))
+                    .font(theme.pageText(CGFloat(editing.fontSize) * scale))
                     .foregroundColor(Color(live: editing.color))
                     .focused($textFocused)
                     .padding(2)
-                    .frame(width: editing.frame.width * scale, alignment: .topLeading)
+                    .frame(width: CGFloat(editing.frame.width) * scale, alignment: .topLeading)
                     .background(RoundedRectangle(cornerRadius: 4).stroke(theme.accent, lineWidth: 1))
-                    .offset(x: editing.frame.x * scale, y: editing.frame.y * scale)
+                    .offset(x: CGFloat(editing.frame.x) * scale, y: CGFloat(editing.frame.y) * scale)
                     .onSubmit(commitText)
                     .onChange(of: textFocused) { _, focused in
                         if !focused { commitText() }
@@ -127,7 +134,7 @@ struct LivePageView: View {
 
     private func beginText(at point: CGPoint, scale: CGFloat) {
         if editing != nil { commitText() }
-        let x = point.x / scale, y = point.y / scale
+        let x = Double(point.x / scale), y = Double(point.y / scale)
         if let existing = LiveHitTest.text(on: page, x: x, y: y) {
             editing = existing
             editingIsNew = false
@@ -180,7 +187,7 @@ struct LivePageView: View {
                 .gesture(DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         localLaser = CGPoint(x: value.location.x / scale, y: value.location.y / scale)
-                        client.sendPointer(pageId: page.id, x: value.location.x / scale, y: value.location.y / scale, laser: true)
+                        client.sendPointer(pageId: page.id, x: Double(value.location.x / scale), y: Double(value.location.y / scale), laser: true)
                     }
                     .onEnded { _ in
                         localLaser = nil
@@ -192,7 +199,8 @@ struct LivePageView: View {
     }
 
     private func erase(at location: CGPoint, scale: CGFloat) {
-        let hits = LiveHitTest.strokes(on: page, x: location.x / scale, y: location.y / scale, radius: eraserReach / scale)
+        let hits = LiveHitTest.strokes(on: page, x: Double(location.x / scale), y: Double(location.y / scale),
+                                       radius: Double(eraserReach / scale))
         let fresh = hits.filter { !erasedThisDrag.contains($0) }
         guard !fresh.isEmpty else { return }
         erasedThisDrag.formUnion(fresh)
@@ -291,21 +299,21 @@ struct LiveRemoteOverlay: View {
                 for ink in inks {
                     guard let first = ink.points.first else { continue }
                     var path = Path()
-                    path.move(to: CGPoint(x: first.x * scale, y: first.y * scale))
+                    path.move(to: CGPoint(x: CGFloat(first.x) * scale, y: CGFloat(first.y) * scale))
                     for point in ink.points.dropFirst() {
-                        path.addLine(to: CGPoint(x: point.x * scale, y: point.y * scale))
+                        path.addLine(to: CGPoint(x: CGFloat(point.x) * scale, y: CGFloat(point.y) * scale))
                     }
                     if ink.points.count == 1 {
-                        path.addLine(to: CGPoint(x: first.x * scale + 0.1, y: first.y * scale))
+                        path.addLine(to: CGPoint(x: CGFloat(first.x) * scale + 0.1, y: CGFloat(first.y) * scale))
                     }
                     context.stroke(path, with: .color(Color(live: ink.color)),
-                                   style: StrokeStyle(lineWidth: max(1, ink.width * scale), lineCap: .round, lineJoin: .round))
+                                   style: StrokeStyle(lineWidth: max(1, CGFloat(ink.width) * scale), lineCap: .round, lineJoin: .round))
                     if let last = ink.points.last, let member = member(ink.uid) {
-                        label(member, at: CGPoint(x: last.x * scale + 10, y: last.y * scale - 12), in: &context)
+                        label(member, at: CGPoint(x: CGFloat(last.x) * scale + 10, y: CGFloat(last.y) * scale - 12), in: &context)
                     }
                 }
                 for pointer in pointers {
-                    let center = CGPoint(x: pointer.x * scale, y: pointer.y * scale)
+                    let center = CGPoint(x: CGFloat(pointer.x) * scale, y: CGFloat(pointer.y) * scale)
                     if pointer.laser {
                         let alpha = max(0, 1 - (now - pointer.updatedAt) / laserFade)
                         guard alpha > 0 else { continue }

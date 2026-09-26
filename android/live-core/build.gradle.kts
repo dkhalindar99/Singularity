@@ -31,6 +31,8 @@ tasks.withType<Test>().configureEach {
     inputs.dir(protocolFixtures)
         .withPropertyName("protocolFixtures")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+    // LiveServerTest runs only when this names a local dev server.
+    inputs.property("liveServer", providers.environmentVariable("SPACENOTES_LIVE_SERVER").orElse(""))
     testLogging {
         events("failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

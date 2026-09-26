@@ -46,7 +46,7 @@ public struct Member: Codable, Hashable, Sendable, Identifiable {
 
     public var id: String { connectionId }
     public var isHost: Bool { role == "host" }
-    public var participant: Participant { Participant(uid: uid, role: role) }
+    public var participant: LiveParticipant { LiveParticipant(uid: uid, role: role) }
 }
 
 /// This connection, as the server sees it.
@@ -66,7 +66,7 @@ public struct You: Codable, Hashable, Sendable {
     }
 
     public var isHost: Bool { role == "host" }
-    public var participant: Participant { Participant(uid: uid, role: role) }
+    public var participant: LiveParticipant { LiveParticipant(uid: uid, role: role) }
 }
 
 public struct RoomInfo: Codable, Hashable, Sendable {

@@ -10,7 +10,10 @@ import FoundationNetworking
 public enum TransportEvent: Sendable {
     case open
     case message(String)
-    case closed(reason: String?)
+    /// `code` is the WebSocket close code when the server sent one. The room
+    /// server closes with 4000 (room-ended), 4001 (removed-by-host) and 4002
+    /// (an error, reason = its code), and `reason` then carries that word.
+    case closed(code: Int?, reason: String?)
 }
 
 /// One WebSocket connection. The room client makes a fresh transport for every
@@ -54,7 +57,7 @@ public final class URLSessionWebSocketTransport: WebSocketTransport {
         guard let task, !closed else { return }
         task.send(.string(text)) { [weak self] error in
             guard let error else { return }
-            Task { @MainActor in self?.finish(reason: error.localizedDescription) }
+            Task { @MainActor in self?.finish(error) }
         }
     }
 
@@ -80,17 +83,19 @@ public final class URLSessionWebSocketTransport: WebSocketTransport {
                 case .success:
                     self.receive()
                 case .failure(let error):
-                    self.finish(reason: error.localizedDescription)
+                    self.finish(error)
                 }
             }
         }
     }
 
-    private func finish(reason: String?) {
-        guard !closed else { return }
+    private func finish(_ error: Error) {
+        guard !closed, let task else { return }
+        let code = task.closeCode == .invalid ? nil : task.closeCode.rawValue
+        let reason = task.closeReason.map { String(decoding: $0, as: UTF8.self) } ?? error.localizedDescription
         let onEvent = self.onEvent
         close()
-        onEvent?(.closed(reason: reason))
+        onEvent?(.closed(code: code, reason: reason))
     }
 }
 
@@ -141,11 +146,11 @@ public final class InMemoryTransport: WebSocketTransport {
     }
 
     /// The server (or the network) closed the socket.
-    public func drop(reason: String? = nil) {
+    public func drop(code: Int? = nil, reason: String? = nil) {
         let onEvent = self.onEvent
         isClosed = true
         self.onEvent = nil
-        onEvent?(.closed(reason: reason))
+        onEvent?(.closed(code: code, reason: reason))
     }
 }
 

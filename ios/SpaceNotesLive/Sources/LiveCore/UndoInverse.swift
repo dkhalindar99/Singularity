@@ -72,30 +72,3 @@ public enum UndoInverse {
         }
     }
 }
-
-/// Keeps a stroke inside the protocol's limits: at most 5,000 points, and a
-/// frame the server will accept (256 KiB). A longer stroke is sent as several
-/// strokes that share their joining point, so nothing drawn is lost.
-public enum LiveStrokeSplitter {
-    public static let maximumFrameBytes = 240 * 1024
-
-    public static func split(_ stroke: LiveStroke,
-                             maximumPoints: Int = Permissions.maximumStrokePoints,
-                             maximumBytes: Int = maximumFrameBytes) -> [LiveStroke] {
-        if stroke.points.count <= maximumPoints, encodedSize(stroke) <= maximumBytes { return [stroke] }
-        guard stroke.points.count > 2 else { return [stroke] }
-        let middle = min(stroke.points.count / 2, maximumPoints - 1)
-        var first = stroke
-        first.points = Array(stroke.points[...middle])
-        var second = stroke
-        second.id = LiveIDs.make()
-        second.points = Array(stroke.points[middle...])
-        return split(first, maximumPoints: maximumPoints, maximumBytes: maximumBytes)
-            + split(second, maximumPoints: maximumPoints, maximumBytes: maximumBytes)
-    }
-
-    private static func encodedSize(_ stroke: LiveStroke) -> Int {
-        // Room for the op envelope around the stroke.
-        ((try? LiveJSON.encoder.encode(stroke).count) ?? 0) + 512
-    }
-}

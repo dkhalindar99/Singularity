@@ -13,7 +13,7 @@ final class PermissionFixtureTests: XCTestCase {
         for testCase in cases {
             let name = testCase["name"]?.stringValue ?? "?"
             let state = try XCTUnwrap(testCase["state"]).decode(RoomState.self)
-            let member = try XCTUnwrap(testCase["member"]).decode(Participant.self)
+            let member = try XCTUnwrap(testCase["member"]).decode(LiveParticipant.self)
             // Decoded from raw JSON, as the server would receive it.
             let op = try XCTUnwrap(testCase["op"]).decode(Op.self)
             let expected = testCase["expected"]?.stringValue
@@ -23,15 +23,15 @@ final class PermissionFixtureTests: XCTestCase {
 
     func testCanDraw() {
         var state = RoomState()
-        let guest = Participant(uid: "g", role: "guest")
+        let guest = LiveParticipant(uid: "g", role: "guest")
         XCTAssertTrue(Permissions.canDraw(state: state, member: guest))
         state.drawPolicy = "host"
         XCTAssertFalse(Permissions.canDraw(state: state, member: guest))
-        XCTAssertTrue(Permissions.canDraw(state: state, member: Participant(uid: "h", role: "host")))
+        XCTAssertTrue(Permissions.canDraw(state: state, member: LiveParticipant(uid: "h", role: "host")))
         state.drawPolicy = "pen"
         state.penHolder = "g"
         XCTAssertTrue(Permissions.canDraw(state: state, member: guest))
-        XCTAssertFalse(Permissions.canDraw(state: state, member: Participant(uid: "x", role: "guest")))
+        XCTAssertFalse(Permissions.canDraw(state: state, member: LiveParticipant(uid: "x", role: "guest")))
     }
 
     func testMalformedOpsDecodeAsInvalidAndEncodeBack() throws {

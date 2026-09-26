@@ -2,6 +2,7 @@
 // Proprietary and confidential. Use is governed by the LICENSE file.
 
 #if canImport(UIKit) && canImport(PencilKit)
+import LiveCore
 import SwiftUI
 
 /// The row of people along the top, like a video call.

@@ -295,14 +295,16 @@ public class RoomClient(
         _room.value = welcome.room
         _members.value = welcome.members
         clearRemotePresenceLocked()
+        _views.value = viewsFrom(welcome.members)
         // Ops the server already numbered before this connection come back as
         // `duplicate` rejects; the rest are numbered now.
         for (item in pending) sendLocked(ClientMessage.OpRequest(item.clientOpId, item.op))
         myView?.let { sendPresenceLocked(Presence.View(it)) }
         if (myHand) sendPresenceLocked(Presence.Hand(true))
-        _status.value = RoomStatus.Connected
         startPingLocked()
         recomputeLocked()
+        // Last, so whoever reacts to Connected already sees the new state.
+        _status.value = RoomStatus.Connected
     }
 
     private fun opLocked(frame: ServerMessage.OpFrame) {
@@ -344,7 +346,13 @@ public class RoomClient(
         val gone = _liveInk.value.values.filter { it.connectionId !in here }.map { it.liveId }
         gone.forEach(::removeLiveInkLocked)
         _pointers.value = _pointers.value.filterKeys { it in here }
-        _views.value = _views.value.filterKeys { it in here }
+        // The server keeps each member's page, so the list is the truth.
+        _views.value = viewsFrom(members)
+    }
+
+    private fun viewsFrom(members: List<Member>): Map<String, String> {
+        val mine = _me.value?.connectionId
+        return members.filter { it.connectionId != mine && it.pageId != null }.associate { it.connectionId to it.pageId!! }
     }
 
     private fun presenceLocked(from: PresenceSender, presence: Presence) {

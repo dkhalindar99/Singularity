@@ -79,6 +79,18 @@ public struct LiveStroke: Codable, Hashable, Sendable, Identifiable {
 
     /// The highlighter is a marker drawn translucent.
     public var isHighlighter: Bool { inkType == .marker && color.a < 1 }
+
+    /// The same stroke with at most `maximum` points, keeping the first and
+    /// last and spacing the rest evenly. PencilKit stores fitted control
+    /// points rather than raw samples, so a real stroke rarely comes near the
+    /// protocol's limit; this keeps a very long one drawable instead of lost.
+    public func limitedToMaximumPoints(_ maximum: Int = 5000) -> LiveStroke {
+        guard points.count > maximum, maximum >= 2 else { return self }
+        var thinned = self
+        let last = points.count - 1
+        thinned.points = (0..<maximum).map { i in points[Int((Double(i) * Double(last) / Double(maximum - 1)).rounded())] }
+        return thinned
+    }
 }
 
 public struct LiveFrame: Codable, Hashable, Sendable {

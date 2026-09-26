@@ -89,8 +89,12 @@ public final class LiveAPI: @unchecked Sendable {
     }
 
     /// Host only: the room as it is now, for saving back into the notebook.
+    /// PROTOCOL.md says the body is the room state; the server wraps it as
+    /// `{ room, ended, state }`. Both are read.
     public func snapshot(roomId: String) async throws -> RoomState {
         let (data, _) = try await call("GET", "rooms/\(escaped(roomId))/snapshot")
+        struct Wrapped: Decodable { var state: RoomState }
+        if let wrapped = try? LiveJSON.decoder.decode(Wrapped.self, from: data) { return wrapped.state }
         return try decode(RoomState.self, data)
     }
 

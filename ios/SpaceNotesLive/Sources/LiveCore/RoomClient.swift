@@ -163,8 +163,10 @@ public final class RoomClient {
         return components.url ?? server
     }
 
+    /// Starts connecting. Does nothing if already started or ended: an ended
+    /// client is not reused.
     public func connect() {
-        guard !status.isEnded else { return }
+        guard status == .idle else { return }
         stopped = false
         attempt = 0
         status = .connecting
@@ -240,8 +242,15 @@ public final class RoomClient {
         case .message(let text):
             guard let message = try? LiveJSON.decode(ServerMessage.self, from: text) else { return }
             handle(message)
-        case .closed:
-            connectionLost()
+        case .closed(let code, let reason):
+            // The server says why it closed in the close frame too, so a
+            // `removed` or `error` frame lost just before the close (seen with
+            // Linux's libcurl WebSockets) still ends the session properly.
+            if let code, (4000..<5000).contains(code), let reason, !reason.isEmpty, reason != "rate-limited" {
+                end(reason)
+            } else {
+                connectionLost()
+            }
         }
     }
 
@@ -411,15 +420,15 @@ public final class RoomClient {
 
     /// A new op of this person's own: records its undo pair and clears redo.
     @discardableResult
-    private func perform(_ ops: [Op], undo: UndoPair? = nil) -> [String] {
-        let pair = undo ?? (ops.count == 1 ? UndoInverse.pair(for: ops[0], in: state) : nil)
-        let ids = ops.map { submit($0) }
+    private func perform(_ op: Op) -> String {
+        let pair = UndoInverse.pair(for: op, in: state)
+        let id = submit(op)
         if let pair {
-            undoStack.append(UndoEntry(pair: pair, sentIds: ids))
+            undoStack.append(UndoEntry(pair: pair, sentIds: [id]))
             redoStack.removeAll()
             changed()
         }
-        return ids
+        return id
     }
 
     private func recompute() {
@@ -441,44 +450,42 @@ public final class RoomClient {
 
     // MARK: Notebook ops
 
-    /// Adds a finished stroke. A stroke past the protocol's limits goes as
-    /// several strokes, undone together.
+    /// Adds a finished stroke as one `stroke.add`. A stroke over the
+    /// protocol's 5,000 points is not sent (the server would refuse it); the
+    /// canvas thins its strokes first with `limitedToMaximumPoints()`.
     @discardableResult
-    public func addStroke(pageId: String, stroke: LiveStroke) -> [String] {
-        let pieces = LiveStrokeSplitter.split(stroke)
-        let ids = pieces.map(\.id)
-        let pair = UndoPair(undo: [.strokeErase(pageId: pageId, strokeIds: ids)],
-                            redo: [.strokeRestore(pageId: pageId, strokeIds: ids)])
-        return perform(pieces.map { .strokeAdd(pageId: pageId, stroke: $0) }, undo: pair)
+    public func addStroke(pageId: String, stroke: LiveStroke) -> String? {
+        guard stroke.points.count <= Permissions.maximumStrokePoints else { return nil }
+        return perform(.strokeAdd(pageId: pageId, stroke: stroke))
     }
 
     @discardableResult
     public func eraseStrokes(pageId: String, strokeIds: [String]) -> String? {
         guard !strokeIds.isEmpty else { return nil }
-        return perform([.strokeErase(pageId: pageId, strokeIds: strokeIds)]).first
+        return perform(.strokeErase(pageId: pageId, strokeIds: strokeIds))
     }
 
     @discardableResult
     public func restoreStrokes(pageId: String, strokeIds: [String]) -> String? {
         guard !strokeIds.isEmpty else { return nil }
-        return perform([.strokeRestore(pageId: pageId, strokeIds: strokeIds)]).first
+        return perform(.strokeRestore(pageId: pageId, strokeIds: strokeIds))
     }
 
     @discardableResult
     public func moveItems(pageId: String, strokeIds: [String] = [], textIds: [String] = [], dx: Double, dy: Double) -> String? {
         guard !(strokeIds.isEmpty && textIds.isEmpty) else { return nil }
-        return perform([.itemsMove(pageId: pageId, strokeIds: strokeIds, textIds: textIds, dx: dx, dy: dy)]).first
+        return perform(.itemsMove(pageId: pageId, strokeIds: strokeIds, textIds: textIds, dx: dx, dy: dy))
     }
 
     @discardableResult
-    public func upsertText(pageId: String, text: LiveText) -> String? {
-        perform([.textUpsert(pageId: pageId, text: text)]).first
+    public func upsertText(pageId: String, text: LiveText) -> String {
+        perform(.textUpsert(pageId: pageId, text: text))
     }
 
     @discardableResult
     public func eraseTexts(pageId: String, textIds: [String]) -> String? {
         guard !textIds.isEmpty else { return nil }
-        return perform([.textErase(pageId: pageId, textIds: textIds)]).first
+        return perform(.textErase(pageId: pageId, textIds: textIds))
     }
 
     /// Host only. Not undoable.
@@ -628,8 +635,8 @@ public final class LiveInkStreamer {
 
     /// Ends the preview and commits the stroke under the streamer's id.
     @discardableResult
-    public func finish(_ stroke: LiveStroke) -> [String] {
-        guard !isFinished, let client else { return [] }
+    public func finish(_ stroke: LiveStroke) -> String? {
+        guard !isFinished, let client else { return nil }
         end(client)
         var committed = stroke
         committed.id = liveId

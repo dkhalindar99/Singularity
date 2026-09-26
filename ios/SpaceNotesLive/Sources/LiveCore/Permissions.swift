@@ -4,7 +4,7 @@
 import Foundation
 
 /// Who is asking, for a permission check.
-public struct Participant: Codable, Hashable, Sendable {
+public struct LiveParticipant: Codable, Hashable, Sendable {
     public var uid: String
     public var role: String
 
@@ -26,14 +26,14 @@ public enum Permissions {
     public static let maximumStrokePoints = 5000
 
     /// True if this member may change the notebook's content right now.
-    public static func canDraw(state: RoomState, member: Participant) -> Bool {
+    public static func canDraw(state: RoomState, member: LiveParticipant) -> Bool {
         if member.isHost { return true }
         if state.drawPolicy == DrawPolicy.everyone.rawValue { return true }
         return state.drawPolicy == DrawPolicy.pen.rawValue && state.penHolder == member.uid
     }
 
     /// nil means allowed; otherwise `not-host`, `drawing-locked` or `invalid-op`.
-    public static func authorize(state: RoomState, member: Participant, op: Op) -> String? {
+    public static func authorize(state: RoomState, member: LiveParticipant, op: Op) -> String? {
         guard isValid(op) else { return invalidOp }
         switch op {
         case .roomPolicy, .hostPage, .pageAdd:

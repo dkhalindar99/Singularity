@@ -2,6 +2,7 @@
 // Proprietary and confidential. Use is governed by the LICENSE file.
 
 #if canImport(UIKit) && canImport(PencilKit)
+import LiveCore
 import SwiftUI
 
 /// Tools, colours, finger drawing, undo and redo. Anything that changes the

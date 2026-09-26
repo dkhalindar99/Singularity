@@ -258,6 +258,25 @@ final class RoomClientTests: XCTestCase {
         XCTAssertEqual(client.status, .ended(reason: "removed-by-host"), "an ended client stays ended")
     }
 
+    func testAnApplicationCloseCodeEndsEvenWithoutItsFrame() async {
+        await connected()
+        socket.drop(code: 4000, reason: "room-ended")
+        XCTAssertEqual(client.status, .ended(reason: "room-ended"))
+        scheduler.advance(by: 60)
+        XCTAssertEqual(transports.count, 1)
+    }
+
+    func testRateLimitedCloseAndOrdinaryDropsReconnect() async {
+        await connected()
+        socket.drop(code: 4002, reason: "rate-limited")
+        XCTAssertEqual(client.status, .reconnecting)
+        scheduler.advance(by: 0.5)
+        await client.openTask?.value
+        socket.receive(welcome())
+        socket.drop(code: 1006, reason: "abnormal")
+        XCTAssertEqual(client.status, .reconnecting)
+    }
+
     func testErrors() async {
         await connected()
         socket.receive(.error(code: "rate-limited", message: "slow down"))
@@ -474,25 +493,29 @@ final class RoomClientTests: XCTestCase {
         XCTAssertEqual(LiveInkStreamer.round(0.04), 0)
     }
 
-    func testLongStrokesAreSplitWithinLimits() async {
+    func testAStrokeIsAlwaysOneOpAndOverlongStrokesAreNotSent() async {
         await connected()
-        let points = (0..<12_000).map { LivePoint(x: Double($0) + 0.123456789, y: 1.987654321, pressure: 0.123456789, timeOffset: Double($0) / 240,
-                                                   width: 2.123456789, azimuth: 0.987654321, altitude: 1.123456789) }
-        var long = stroke("LONG")
-        long.points = points
-        client.addStroke(pageId: page, stroke: long)
-        let sent = socket.sent
-        XCTAssertGreaterThan(sent.count, 2)
-        for frame in sent { XCTAssertLessThan(frame.utf8.count, 256 * 1024) }
-        let strokes = sentOps().compactMap { op -> LiveStroke? in
-            if case .strokeAdd(_, let s) = op.1 { return s }
-            return nil
-        }
-        XCTAssertEqual(strokes.first?.id, "LONG")
-        XCTAssertTrue(strokes.allSatisfy { $0.points.count <= 5000 })
-        XCTAssertEqual(strokes.reduce(0) { $0 + $1.points.count }, 12_000 + strokes.count - 1, "pieces share their joining points")
-        client.undo()
-        XCTAssertEqual(visibleStrokeIds(), [], "the pieces undo together")
+        let points = (0..<5000).map { LivePoint(x: Double($0) + 0.123456789, y: 1.987654321, pressure: 0.123456789,
+                                                 timeOffset: Double($0) / 240, width: 2.123456789,
+                                                 azimuth: 0.987654321, altitude: 1.123456789) }
+        var full = stroke("FULL")
+        full.points = points
+        XCTAssertNotNil(client.addStroke(pageId: page, stroke: full))
+        XCTAssertEqual(socket.sent.count, 1)
+        XCTAssertLessThan(socket.sent[0].utf8.count, 1024 * 1024, "a 5,000-point stroke fits one frame")
+
+        var tooLong = full
+        tooLong.id = "TOO-LONG"
+        tooLong.points.append(points[0])
+        XCTAssertNil(client.addStroke(pageId: page, stroke: tooLong))
+        XCTAssertEqual(socket.sent.count, 1)
+        XCTAssertEqual(visibleStrokeIds(), ["FULL"])
+
+        let thinned = tooLong.limitedToMaximumPoints()
+        XCTAssertEqual(thinned.points.count, 5000)
+        XCTAssertEqual(thinned.points.first, tooLong.points.first)
+        XCTAssertEqual(thinned.points.last, tooLong.points.last)
+        XCTAssertEqual(full.limitedToMaximumPoints(), full)
     }
 
     // MARK: Received presence

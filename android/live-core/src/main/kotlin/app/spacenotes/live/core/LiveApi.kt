@@ -151,7 +151,8 @@ public class LiveApi(
     private companion object {
         val JSON = "application/json; charset=utf-8".toMediaType()
 
-        fun encodePath(segment: String): String = java.net.URLEncoder.encode(segment, Charsets.UTF_8).replace("+", "%20")
+        // The String overload: the Charset one needs Android 13, and minSdk is 26.
+        fun encodePath(segment: String): String = java.net.URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
     }
 }
 

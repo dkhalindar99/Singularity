@@ -81,6 +81,10 @@ final class LiveAPITests: XCTestCase {
         recorder.answer = (200, #"{"protocol":1,"seq":3,"drawPolicy":"everyone","penHolder":null,"hostPageId":null,"pages":[]}"#)
         let state = try await api(recorder).snapshot(roomId: "r1")
         XCTAssertEqual(state.seq, 3)
+
+        recorder.answer = (200, #"{"room":{"id":"r1"},"ended":false,"state":{"protocol":1,"seq":4,"drawPolicy":"everyone","penHolder":null,"hostPageId":null,"pages":[]}}"#)
+        let wrapped = try await api(recorder).snapshot(roomId: "r1")
+        XCTAssertEqual(wrapped.seq, 4)
     }
 
     func testCodeAlphabet() {

@@ -599,6 +599,9 @@ class RoomClientTest {
         assertTrue(client.pointers.value.isEmpty())
         network.last.receive(ServerMessage.PresenceFrame(ravi, Presence.Pointer(page1, 5.0, 6.0, false)))
 
+        network.last.receive(ServerMessage.Members(listOf(members[0], members[1].copy(pageId = "PAGE-3"))))
+        assertEquals(mapOf("c3" to "PAGE-3"), client.views.value) // the list is the truth, and excludes me
+
         network.last.receive(ServerMessage.Members(members.take(1)))
         assertTrue(client.liveInk.value.isEmpty())
         assertTrue(client.pointers.value.isEmpty())
